@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Portal Saúde Inteligente</title>
+<title>Portal de Demandas</title>
 <style>
 :root{--bg:#f4f6f7;--cd:#fff;--tx:#2c3e50;--mu:#7f8c8d;--ln:#d5dbdb;--dk:#34495e;--tl:#0f766e;--rd:#c0392b}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17202a;--cd:#212f3d;--tx:#ecf0f1;--mu:#aab7b8;--ln:#3b4d5e;--dk:#0e1620}}
@@ -174,7 +174,7 @@ async function carregarCidades(){
 function showLogin(msg){
   me = null;
   setView(`<div class="center"><form class="box" id="lf">
-    <h2 class="serif">Portal Saúde Inteligente</h2><p>Entre com seu usuário e senha.</p>
+    <h2 class="serif">Portal de Demandas</h2><p>Entre com seu usuário e senha.</p>
     <label>Usuário<input id="u" autocomplete="username" autocapitalize="none" required></label>
     <label>Senha<input id="p" type="password" autocomplete="current-password" required></label>
     <button class="btn" type="submit">Entrar</button><p class="err" id="err" role="alert">${esc(msg||'')}</p></form></div>`);
@@ -236,7 +236,7 @@ window.addEventListener('hashchange', () => { if (me) route(); });
 
 function shell(inner){
   setView(`<header class="top"><div class="in">
-    <div><a class="brand serif" href="#/" style="text-decoration:none;color:inherit">Portal Saúde Inteligente</a></div>
+    <div><a class="brand serif" href="#/" style="text-decoration:none;color:inherit">Portal de Demandas</a></div>
     <nav>
       <small>${esc(me.nome)} · ${esc(me.perfis.nome)}</small>
       <a class="btn sec sm" href="#/" style="text-decoration:none">Início</a>
@@ -253,7 +253,7 @@ function shell(inner){
    ============================================================ */
 async function showHome(){
   const vis = CIDADES.filter(c => can('ver_'+c.slug));
-  shell(`<div class="hero"><h1 class="serif">Escolha o município</h1><p>Clique no bloco para abrir o acompanhamento de demandas. Use "Enviar planilha" para atualizar os dados automaticamente.</p>
+  shell(`<div class="hero"><h1 class="serif">Escolha o município que deseja ver as demadas</h1>
     ${can('gerenciar_cidades') ? '<p style="margin-top:14px"><button class="btn" id="bnova">+ Nova cidade</button></p>' : ''}</div>
     ${vis.length ? `<div class="cards">${vis.map(c => `<section class="card">
       <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
@@ -496,7 +496,7 @@ tbody tr:nth-child(even) td{background:#f6f8f9}
 .chip{border:1px solid #d5dbdb;border-radius:14px;padding:3px 10px;font-size:10px}
 .chip b{font-size:11px}
 .flt{color:#7f8c8d;font-size:10px;margin:4px 0 8px}
-@page{margin:12mm;@bottom-center{content:"Portal Saúde Inteligente  ·  página " counter(page) " de " counter(pages);font:8.5px "Segoe UI",Arial,sans-serif;color:#7f8c8d}}
+@page{margin:12mm;@bottom-center{content:"Portal de Demandas  ·  página " counter(page) " de " counter(pages);font:8.5px "Segoe UI",Arial,sans-serif;color:#7f8c8d}}
 `;
 
 function imprimirHTML(html, titulo){
@@ -516,7 +516,7 @@ function imprimirHTML(html, titulo){
 
 const agoraBR = () => new Date().toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
 const hoje = () => new Date().toISOString().slice(0, 10);
-const cabecalhoPDF = (titulo, sub) => `<header class="hd"><div><div class="eyebrow">Portal Saúde Inteligente</div><h1>${esc(titulo)}</h1><div class="sub">${esc(sub)}</div></div><div class="emit">Emitido em<br><b>${agoraBR()}</b></div></header>`;
+const cabecalhoPDF = (titulo, sub) => `<header class="hd"><div><div class="eyebrow">Portal de Demandas</div><h1>${esc(titulo)}</h1><div class="sub">${esc(sub)}</div></div><div class="emit">Emitido em<br><b>${agoraBR()}</b></div></header>`;
 
 function estatisticas(R){
   const n = s => R.filter(r => r.s === s).length, tot = R.length, sol = n('Solucionado'), pen = n('Pendente'), ana = n('Em análise');
