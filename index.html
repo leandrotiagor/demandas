@@ -475,6 +475,7 @@ const ligarAbas = () => $$('[data-go]').forEach(b => b.addEventListener('click',
 const tam = b => b >= 1048576 ? (b/1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b/1024)) + ' KB';
 const novoId = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 const BUCKET = 'relatorios';
+const periodo = r => (!r.data_fim || r.data_fim === r.data_visita) ? fm(r.data_visita) : fm(r.data_visita) + ' a ' + fm(r.data_fim);
 
 async function showRelatorios(slug){
   const c = cid(slug);
@@ -493,19 +494,22 @@ async function listarRelatorios(slug){
   const pode = can('gerenciar_relatorios');
   box.innerHTML = `${pode ? `<div class="panel"><h3>Enviar novo relatório</h3>
     <form id="rf"><div class="row"><label>Título<input id="rf-t" required maxlength="120" placeholder="ex.: Visita de acompanhamento"></label>
-    <label style="max-width:190px;min-width:150px;flex:none">Data da visita<input id="rf-d" type="date" required value="${hoje()}"></label></div>
+    <label style="max-width:170px;min-width:140px;flex:none">Data inicial da visita<input id="rf-d" type="date" required value="${hoje()}"></label>
+    <label style="max-width:170px;min-width:140px;flex:none">Data final da visita<input id="rf-f" type="date" required value="${hoje()}"></label></div>
     <div class="row" style="margin-top:10px"><label>Observação (opcional)<input id="rf-o" maxlength="300"></label></div>
     <div class="row" style="margin-top:10px"><label>Arquivo PDF (até 25 MB)<input id="rf-a" type="file" accept="application/pdf,.pdf" required></label>
     <button class="btn" type="submit" id="rf-b">Enviar relatório</button></div>
     <p style="margin:10px 0 0;color:var(--mu)">Gere o PDF a partir do seu Word (Arquivo → Salvar como → PDF) e envie aqui.</p></form></div>` : ''}
     <div class="panel"><h3>Relatórios enviados (${data.length})</h3>
-    ${data.length ? `<div class="t"><table><thead><tr><th>Visita</th><th>Relatório</th><th>Enviado por</th><th>Ações</th></tr></thead><tbody>
-    ${data.map(r => `<tr data-id="${r.id}"><td style="white-space:nowrap"><b>${fm(r.data_visita)}</b></td>
+    ${data.length ? `<div class="t"><table><thead><tr><th>Período da visita</th><th>Relatório</th><th>Enviado por</th><th>Ações</th></tr></thead><tbody>
+    ${data.map(r => `<tr data-id="${r.id}"><td style="white-space:nowrap"><b>${periodo(r)}</b></td>
       <td><b>${esc(r.titulo)}</b>${r.observacao ? `<div class="d" style="display:block">${esc(r.observacao)}</div>` : ''}<div class="d" style="display:block">${esc(r.nome_arquivo)} · ${tam(r.tamanho)}</div></td>
       <td>${esc(r.enviado_por)}<div class="d" style="display:block">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</div></td>
       <td><div class="row"><button class="btn sm" data-a="ver">Visualizar</button><button class="btn sec sm" data-a="baixar">Baixar PDF</button>${pode ? '<button class="btn red sm" data-a="del">Excluir</button>' : ''}</div></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="empty">Nenhum relatório enviado ainda para esta cidade.</div>'}</div>`;
 
+  const ini = $('#rf-d'), fim = $('#rf-f');
+  if (ini && fim) { ini.addEventListener('change', () => { fim.min = ini.value; if (!fim.value || fim.value < ini.value) fim.value = ini.value; }); fim.min = ini.value; }
   $('#rf')?.addEventListener('submit', async e => {
     e.preventDefault();
     const f = $('#rf-a').files[0], b = $('#rf-b');
@@ -513,12 +517,13 @@ async function listarRelatorios(slug){
       if (!f) throw new Error('Escolha um arquivo PDF.');
       if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') throw new Error('O arquivo precisa ser um PDF.');
       if (f.size > 26214400) throw new Error('O arquivo tem mais de 25 MB.');
+      if ($('#rf-f').value < $('#rf-d').value) throw new Error('A data final não pode ser anterior à data inicial.');
       b.disabled = true; b.textContent = 'Enviando…';
       const path = `${slug}/${novoId()}.pdf`;
       const up = await sb.storage.from(BUCKET).upload(path, f, { contentType:'application/pdf', upsert:false });
       if (up.error) throw up.error;
       const ins = await sb.from('relatorios').insert({
-        cidade: slug, titulo: $('#rf-t').value.trim(), data_visita: $('#rf-d').value, observacao: $('#rf-o').value.trim(),
+        cidade: slug, titulo: $('#rf-t').value.trim(), data_visita: $('#rf-d').value, data_fim: $('#rf-f').value, observacao: $('#rf-o').value.trim(),
         arquivo_path: path, nome_arquivo: f.name, tamanho: f.size, enviado_por: me.usuario });
       if (ins.error) { await sb.storage.from(BUCKET).remove([path]); throw ins.error; }
       toast('Relatório enviado.'); listarRelatorios(slug);
@@ -532,7 +537,7 @@ async function listarRelatorios(slug){
       if (b.dataset.a === 'ver') return await visualizarRelatorio(r);
       if (b.dataset.a === 'baixar') return await baixarRelatorio(r);
       if (b.dataset.a === 'del') {
-        if (!confirm(`Excluir o relatório "${r.titulo}" (${fm(r.data_visita)})? Não é possível desfazer.`)) return;
+        if (!confirm(`Excluir o relatório "${r.titulo}" (${periodo(r)})? Não é possível desfazer.`)) return;
         const rm = await sb.storage.from(BUCKET).remove([r.arquivo_path]);
         if (rm.error) throw rm.error;
         const { error } = await sb.from('relatorios').delete().eq('id', r.id);
@@ -559,7 +564,7 @@ async function baixarRelatorio(r){
 async function visualizarRelatorio(r){
   toast('Abrindo relatório…');
   const url = URL.createObjectURL(await blobRelatorio(r));
-  const d = abrirDialog(`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h3 class="serif" style="font-size:20px">${esc(r.titulo)} · ${fm(r.data_visita)}</h3>
+  const d = abrirDialog(`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h3 class="serif" style="font-size:20px">${esc(r.titulo)} · ${periodo(r)}</h3>
     <div class="row"><button class="btn sm" id="v-b">Baixar PDF</button><button class="btn sec sm" id="v-n">Abrir em nova aba</button><button class="btn sec sm" id="v-f">Fechar</button></div></div>
     <iframe src="${url}" title="${esc(r.titulo)}" style="width:100%;height:74vh;border:1px solid var(--ln);border-radius:8px;background:#fff"></iframe>`);
   d.style.width = 'min(1000px,96vw)';
