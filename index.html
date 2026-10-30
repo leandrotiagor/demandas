@@ -335,10 +335,10 @@ function renderDash(R){
 const MAPA = [
   ['n', h => ['n','no','num','numero','id','codigo','cod'].includes(h) || h.startsWith('numero') || h.startsWith('nda')],
   ['t', h => h.includes('titulo') || h === 'demanda' || h.includes('assunto') || h.includes('resumo')],
-  ['d', h => h.includes('descri') || h.includes('detalhe')],
-  ['m', h => h.includes('modulo')],
+  ['d', h => h.includes('descri') || h.includes('detalhe') || h.includes('oquefoi')],
+  ['m', h => h.includes('modulo') && !h.includes('lista')],
   ['s', h => h.includes('status') || h.includes('situacao')],
-  ['p', h => h.includes('pedid') || h.includes('abertura') || h.includes('solicit') || h.includes('cadastro')],
+  ['p', h => (h.includes('pedid') && h.includes('data')) || h === 'dtpedido' || h.includes('abertura') || h.includes('solicit') || h.includes('cadastro')],
   ['e', h => h.includes('entreg') || h.includes('conclu') || h.includes('resolu') || h.includes('fechamento')]
 ];
 function mapear(headers){
@@ -365,14 +365,33 @@ function escolherArquivo(slug){
 async function lerPlanilha(slug, file){
   try {
     const wb = XLSX.read(await file.arrayBuffer(), { type:'array' });
-    let rows = null, mapa = null;
-    for (const nome of wb.SheetNames) {
-      const json = XLSX.utils.sheet_to_json(wb.Sheets[nome], { defval:'', raw:true });
-      if (!json.length) continue;
-      const mp = mapear(Object.keys(json[0]));
-      if (mp.t) { rows = json; mapa = mp; break; }
+    const ler = nome => XLSX.utils.sheet_to_json(wb.Sheets[nome], { defval:'', raw:true, blankrows:true });
+    const aux = /base|dashboard|an[aá]lise|resumo/i;
+    const nomes = [...wb.SheetNames.filter(n => !aux.test(n)), ...wb.SheetNames.filter(n => aux.test(n))];
+    let rows = null, mapa = null, nomeAba = '';
+    for (const nome of nomes) {
+      const json = ler(nome); if (!json.length) continue;
+      const hs = Object.keys(json[0]), mp = mapear(hs);
+      if (!mp.n && hs[0].startsWith('__EMPTY')) mp.n = hs[0];   // coluna A sem título = número
+      if (mp.t) { rows = json; mapa = mp; nomeAba = nome; break; }
     }
     if (!rows) throw new Error('Não encontrei uma coluna de título/demanda. Confira o cabeçalho da planilha.');
+
+    // Módulo: coluna da própria aba > outra aba (ex.: Base_Analise) > módulo já cadastrado no sistema
+    let modAux = null, modBanco = null, nota = '';
+    if (!mapa.m) {
+      for (const nome of wb.SheetNames) {
+        if (nome === nomeAba) continue;
+        const j = ler(nome); if (!j.length) continue;
+        const h = Object.keys(j[0]).find(x => { const k = norm(x); return k.includes('modulo') && !k.includes('lista'); });
+        if (h) { modAux = j.map(r => String(r[h] ?? '').trim()); nota = `Módulos lidos da aba "${nome}".`; break; }
+      }
+      if (!modAux) {
+        try { modBanco = new Map((await carregarDemandas(slug)).map(r => [r.n, r.m])); nota = 'A planilha não tem coluna de módulo: mantive o módulo das demandas que já existiam (mesmo número).'; } catch (e) {}
+      }
+      if (modAux || modBanco) mapa.m = '(outra origem)';
+    }
+
     const vistos = new Map(); let ignoradas = 0;
     rows.forEach((r, idx) => {
       const titulo = String(r[mapa.t] ?? '').trim();
@@ -381,9 +400,10 @@ async function lerPlanilha(slug, file){
       let numero = mapa.n ? parseInt(String(r[mapa.n]).replace(/\D/g, ''), 10) : NaN;
       if (!numero) numero = idx + 1;
       const bruto = mapa.s ? String(r[mapa.s] ?? '').trim() : '';
+      const modulo = mapa.m === '(outra origem)' ? (modAux ? (modAux[idx] || '') : (modBanco.get(numero) || ''))
+                   : mapa.m ? String(r[mapa.m] ?? '').trim() : '';
       vistos.set(numero, {
-        numero, titulo, descricao,
-        modulo: mapa.m ? String(r[mapa.m] ?? '').trim() : '',
+        numero, titulo, descricao, modulo,
         status: stt(bruto) || bruto,
         data_pedido: mapa.p ? paraISO(r[mapa.p]) : null,
         data_entrega: mapa.e ? paraISO(r[mapa.e]) : null
@@ -391,11 +411,12 @@ async function lerPlanilha(slug, file){
     });
     const lista = [...vistos.values()].sort((a,b) => a.numero - b.numero);
     if (!lista.length) throw new Error('A planilha não tem linhas com dados.');
-    previewUpload(slug, lista, file.name, ignoradas, mapa);
+    const { count } = await sb.from('demandas').select('id', { count:'exact', head:true }).eq('cidade', slug);
+    previewUpload(slug, lista, file.name, ignoradas, mapa, nota, count ?? 0);
   } catch (e) { toast('Não consegui ler a planilha: ' + e.message, true); }
 }
 
-function previewUpload(slug, lista, nomeArq, ignoradas, mapa){
+function previewUpload(slug, lista, nomeArq, ignoradas, mapa, nota, atuais){
   const c = cid(slug), dlg = document.createElement('dialog');
   const cont = s => lista.filter(r => r.status === s).length;
   const faltam = [['n','Nº'],['d','Descrição'],['m','Módulo'],['s','Status'],['p','Data do pedido'],['e','Data da entrega']].filter(([k]) => !mapa[k]).map(x => x[1]);
@@ -403,6 +424,8 @@ function previewUpload(slug, lista, nomeArq, ignoradas, mapa){
     <p style="margin:0 0 10px;color:var(--mu)">Arquivo: <b>${esc(nomeArq)}</b> · ${lista.length} demandas lidas${ignoradas ? ` · ${ignoradas} linhas vazias ignoradas` : ''}</p>
     <p style="margin:0 0 10px">Solucionadas: <b>${cont('Solucionado')}</b> · Pendentes: <b>${cont('Pendente')}</b> · Em análise: <b>${cont('Em análise')}</b></p>
     ${faltam.length ? `<p style="margin:0 0 10px;color:#b9770e">Colunas não encontradas (ficarão vazias): ${faltam.join(', ')}</p>` : ''}
+    ${nota ? `<p style="margin:0 0 10px;color:var(--mu)">${esc(nota)}</p>` : ''}
+    <p style="margin:0 0 10px">Hoje o sistema tem <b>${atuais}</b> demandas de ${c.titulo}; esta planilha tem <b>${lista.length}</b>.${lista.length < atuais ? ' <b style="color:var(--rd)">A planilha tem MENOS demandas que o sistema. Confira se é a versão completa antes de confirmar.</b>' : ''}</p>
     <div class="t" style="max-height:240px;overflow:auto"><table style="min-width:520px"><thead><tr><th>Nº</th><th>Título</th><th>Módulo</th><th>Status</th><th>Pedido</th><th>Entrega</th></tr></thead><tbody>
     ${lista.slice(0,6).map(r => `<tr><td>${r.numero}</td><td>${esc(r.titulo).slice(0,70)}</td><td>${esc(r.modulo)}</td><td>${esc(r.status)}</td><td>${fm(r.data_pedido||'')}</td><td>${fm(r.data_entrega||'')}</td></tr>`).join('')}</tbody></table></div>
     <p style="margin:12px 0;color:var(--rd)"><b>Atenção:</b> isto substitui todas as demandas atuais de ${c.titulo} pelas desta planilha.</p>
