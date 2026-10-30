@@ -112,14 +112,12 @@ const DOMINIO = '@portal.app';              // precisa ser igual ao da Edge Func
 const SENHA_PADRAO = '123456';
 
 /* ------------------------------------------------------------ */
-const CIDADES = [
-  {slug:'perdigao', nome:'PERDIGÃO', titulo:'Perdigão'},
-  {slug:'perdizes', nome:'PERDIZES', titulo:'Perdizes'},
-  {slug:'pratinha', nome:'PRATINHA', titulo:'Pratinha'}
-];
+let CIDADES = [];   // carregadas do banco (tabela cidades)
 const cid = s => CIDADES.find(c => c.slug === s);
-const PERMS = [
+const slugDe = nome => norm(nome);   // "Taiobeiras" -> "taiobeiras"
+const PERMS = () => [
   ...CIDADES.flatMap(c => [['ver_'+c.slug,'Ver '+c.titulo],['upload_'+c.slug,'Enviar planilha de '+c.titulo]]),
+  ['gerenciar_cidades','Cadastrar e gerenciar cidades'],
   ['gerenciar_operadores','Gerenciar operadores'],
   ['gerenciar_perfis','Gerenciar perfis']
 ];
@@ -131,6 +129,7 @@ const fm = s => s ? s.split('-').reverse().join('/') : '';
 const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 
 let sb, me = null, CH = [];
+const ehAdmin = () => can('gerenciar_operadores') || can('gerenciar_perfis') || can('gerenciar_cidades');
 const can = p => !!(me && me.perfis && me.perfis.permissoes.includes(p));
 
 function toast(msg, bad){
@@ -163,7 +162,12 @@ async function carregarMe(){
     carregarMe.motivo = error ? 'Erro ao consultar seu cadastro: ' + error.message : !data ? 'Seu usuário existe, mas não está cadastrado como operador.' : 'Seu acesso está desativado.';
     await sb.auth.signOut(); me = null; return false;
   }
-  me = data; return true;
+  me = data; await carregarCidades(); return true;
+}
+
+async function carregarCidades(){
+  const { data } = await sb.from('cidades').select('slug, nome').order('nome');
+  CIDADES = (data || []).map(c => ({ slug:c.slug, titulo:c.nome, nome:c.nome.toUpperCase() }));
 }
 
 function showLogin(msg){
@@ -224,7 +228,7 @@ function route(){
   if (me.trocar_senha) return showTrocar(true);
   const h = location.hash.replace(/^#\/?/, '').split('/');
   if (h[0] === 'cidade' && cid(h[1]) && can('ver_'+h[1])) return showCidade(h[1]);
-  if (h[0] === 'admin' && (can('gerenciar_operadores') || can('gerenciar_perfis'))) return showAdmin();
+  if (h[0] === 'admin' && ehAdmin()) return showAdmin();
   showHome();
 }
 window.addEventListener('hashchange', () => { if (me) route(); });
@@ -235,7 +239,7 @@ function shell(inner){
     <nav>
       <small>${esc(me.nome)} · ${esc(me.perfis.nome)}</small>
       <a class="btn sec sm" href="#/" style="text-decoration:none">Início</a>
-      ${(can('gerenciar_operadores')||can('gerenciar_perfis')) ? '<a class="btn sec sm" href="#/admin" style="text-decoration:none">Administração</a>' : ''}
+      ${ehAdmin() ? '<a class="btn sec sm" href="#/admin" style="text-decoration:none">Administração</a>' : ''}
       <button class="btn sec sm" id="bsenha">Trocar senha</button>
       <button class="btn sec sm" id="bsair">Sair</button>
     </nav></div></header><main>${inner}</main>`);
@@ -248,13 +252,15 @@ function shell(inner){
    ============================================================ */
 async function showHome(){
   const vis = CIDADES.filter(c => can('ver_'+c.slug));
-  shell(`<div class="hero"><h1 class="serif">Escolha o município</h1><p>Clique no bloco para abrir o acompanhamento de demandas. Use "Enviar planilha" para atualizar os dados automaticamente.</p></div>
+  shell(`<div class="hero"><h1 class="serif">Escolha o município</h1><p>Clique no bloco para abrir o acompanhamento de demandas. Use "Enviar planilha" para atualizar os dados automaticamente.</p>
+    ${can('gerenciar_cidades') ? '<p style="margin-top:14px"><button class="btn" id="bnova">+ Nova cidade</button></p>' : ''}</div>
     ${vis.length ? `<div class="cards">${vis.map(c => `<section class="card">
       <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
       <div class="acts"><a class="btn" href="#/cidade/${c.slug}" style="text-decoration:none">Abrir</a>
       ${can('upload_'+c.slug) ? `<button class="btn sec" data-up="${c.slug}">Enviar planilha</button>` : ''}</div></section>`).join('')}</div>`
     : '<div class="empty">Você ainda não tem acesso a nenhum município. Fale com o administrador.</div>'}`);
   $$('[data-up]').forEach(b => b.addEventListener('click', () => escolherArquivo(b.dataset.up)));
+  $('#bnova')?.addEventListener('click', novaCidade);
   if (!vis.length) return;
   const { data: cs } = await sb.from('cidades').select('slug, atualizado_em');
   for (const c of vis) {
@@ -453,12 +459,100 @@ async function adm(body){
 }
 
 function showAdmin(){
-  const ops = can('gerenciar_operadores'), pfs = can('gerenciar_perfis');
-  if (!abaAdmin || (abaAdmin === 'op' && !ops) || (abaAdmin === 'pf' && !pfs)) abaAdmin = ops ? 'op' : 'pf';
+  const ops = can('gerenciar_operadores'), pfs = can('gerenciar_perfis'), cds = can('gerenciar_cidades');
+  if (!abaAdmin || (abaAdmin === 'op' && !ops) || (abaAdmin === 'pf' && !pfs) || (abaAdmin === 'ci' && !cds)) abaAdmin = ops ? 'op' : pfs ? 'pf' : 'ci';
+  const tab = (k, ok, nome) => ok ? `<button data-t="${k}" class="${abaAdmin===k?'on':''}">${nome}</button>` : '';
   shell(`<div class="pagehead"><h1 class="serif">Administração</h1></div>
-    <div class="tabs">${ops ? `<button data-t="op" class="${abaAdmin==='op'?'on':''}">Operadores</button>` : ''}${pfs ? `<button data-t="pf" class="${abaAdmin==='pf'?'on':''}">Perfis e permissões</button>` : ''}</div><div id="adm"></div>`);
+    <div class="tabs">${tab('op',ops,'Operadores')}${tab('pf',pfs,'Perfis e permissões')}${tab('ci',cds,'Cidades')}</div><div id="adm"></div>`);
   $$('.tabs button').forEach(b => b.addEventListener('click', () => { abaAdmin = b.dataset.t; showAdmin(); }));
-  abaAdmin === 'op' ? abaOperadores() : abaPerfis();
+  abaAdmin === 'op' ? abaOperadores() : abaAdmin === 'pf' ? abaPerfis() : abaCidades();
+}
+
+/* ---------- Cidades ---------- */
+function abrirDialog(html){
+  const d = document.createElement('dialog');
+  d.innerHTML = html; document.body.appendChild(d);
+  d.addEventListener('close', () => d.remove());
+  d.showModal(); return d;
+}
+
+async function criarCidade(nome){
+  nome = nome.trim().replace(/\s+/g, ' ');
+  const slug = slugDe(nome);
+  if (slug.length < 2) throw new Error('Digite um nome de cidade válido.');
+  const { error } = await sb.rpc('criar_cidade', { p_nome: nome, p_slug: slug });
+  if (error) throw new Error(error.message);
+  await carregarMe();            // atualiza as permissões do perfil e a lista de cidades
+  return slug;
+}
+
+function perguntarUpload(slug){
+  const c = cid(slug); if (!c) return;
+  const d = abrirDialog(`<h3 class="serif" style="font-size:24px;margin-bottom:8px">${esc(c.titulo)} cadastrada</h3>
+    <p style="margin:0 0 14px">Quer enviar agora a planilha de demandas desta cidade? Você também pode fazer isso depois, pelo botão "Enviar planilha".</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn sec" id="pu-n">Depois</button><button class="btn" id="pu-s">Enviar planilha agora</button></div>`);
+  $('#pu-n', d).onclick = () => d.close();
+  $('#pu-s', d).onclick = () => { d.close(); escolherArquivo(slug); };
+}
+
+function novaCidade(){
+  const d = abrirDialog(`<h3 class="serif" style="font-size:24px;margin-bottom:10px">Nova cidade</h3>
+    <form id="ncf"><label>Nome da cidade<input id="ncn" required maxlength="60" placeholder="ex.: Taiobeiras" autocomplete="off"></label>
+    <p class="err" id="ncerr" role="alert"></p>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn sec" id="nc-c">Cancelar</button><button class="btn" type="submit" id="nc-s">Salvar</button></div></form>`);
+  $('#nc-c', d).onclick = () => d.close();
+  $('#ncf', d).addEventListener('submit', async e => {
+    e.preventDefault();
+    const b = $('#nc-s', d); b.disabled = true;
+    try {
+      const slug = await criarCidade($('#ncn', d).value);
+      d.close(); toast('Cidade cadastrada.');
+      location.hash = '#/cidade/' + slug; route(); perguntarUpload(slug);
+    } catch (er) { $('#ncerr', d).textContent = er.message; b.disabled = false; }
+  });
+  $('#ncn', d).focus();
+}
+
+async function abaCidades(){
+  const box = $('#adm'); box.innerHTML = 'Carregando…';
+  await carregarCidades();
+  const cont = {};
+  for (const c of CIDADES) { const { count } = await sb.from('demandas').select('id', { count:'exact', head:true }).eq('cidade', c.slug); cont[c.slug] = count ?? 0; }
+  box.innerHTML = `<div class="panel"><h3>Nova cidade</h3>
+    <form class="row" id="cf"><label>Nome da cidade<input id="cn" required maxlength="60" placeholder="ex.: Taiobeiras" autocomplete="off"></label><button class="btn" type="submit">Cadastrar</button></form>
+    <p style="margin:10px 0 0;color:var(--mu)">Depois de cadastrar, você poderá enviar a planilha de demandas da cidade. Para liberar a cidade a outros perfis, marque as permissões dela em "Perfis e permissões".</p></div>
+    <div class="panel"><h3>Cidades cadastradas (${CIDADES.length})</h3><div class="t"><table><thead><tr><th>Cidade</th><th>Demandas</th><th>Ações</th></tr></thead><tbody>
+    ${CIDADES.map(c => `<tr data-s="${c.slug}"><td>${esc(c.titulo)}</td><td>${cont[c.slug]}</td>
+      <td><div class="row"><button class="btn sec sm" data-a="up">Enviar planilha</button><button class="btn sec sm" data-a="ren">Renomear</button><button class="btn red sm" data-a="del">Excluir</button></div></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+  $('#cf').addEventListener('submit', async e => {
+    e.preventDefault();
+    try { const slug = await criarCidade($('#cn').value); toast('Cidade cadastrada.'); await abaCidades(); perguntarUpload(slug); }
+    catch (er) { toast(er.message, true); }
+  });
+  box.onclick = async e => {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    const slug = b.closest('tr').dataset.s, c = cid(slug);
+    try {
+      if (b.dataset.a === 'up') return escolherArquivo(slug);
+      if (b.dataset.a === 'ren') {
+        const n = (prompt('Novo nome da cidade:', c.titulo) || '').trim();
+        if (!n || n === c.titulo) return;
+        const { data, error } = await sb.from('cidades').update({ nome: n }).eq('slug', slug).select();
+        if (error) throw error; if (!data.length) throw new Error('Sem permissão para renomear.');
+        toast('Cidade renomeada.');
+      }
+      if (b.dataset.a === 'del') {
+        const t = prompt(`Isto apaga a cidade ${c.titulo} e TODAS as suas demandas, e não pode ser desfeito.\n\nPara confirmar, digite o nome da cidade:`);
+        if (t === null) return;
+        if (norm(t) !== norm(c.titulo)) throw new Error('O nome digitado não confere. Nada foi apagado.');
+        const { error } = await sb.rpc('excluir_cidade', { p_slug: slug });
+        if (error) throw error;
+        await carregarMe(); toast('Cidade excluída.');
+      }
+      abaCidades();
+    } catch (er) { toast(er.message, true); }
+  };
 }
 
 async function abaOperadores(){
@@ -511,7 +605,7 @@ async function abaPerfis(){
     sb.from('operadores').select('perfil_id')
   ]);
   const uso = id => ops.filter(o => o.perfil_id === id).length;
-  const checks = (sel=[]) => `<div class="perms">${PERMS.map(([k,l]) => `<label><input type="checkbox" value="${k}" ${sel.includes(k)?'checked':''}> ${l}</label>`).join('')}</div>`;
+  const checks = (sel=[]) => `<div class="perms">${PERMS().map(([k,l]) => `<label><input type="checkbox" value="${k}" ${sel.includes(k)?'checked':''}> ${l}</label>`).join('')}</div>`;
   box.innerHTML = `<div class="panel"><h3>Novo perfil</h3><form id="pn"><label>Nome do perfil<input id="pnn" required placeholder="ex.: Operador Perdizes"></label>${checks()}<button class="btn" type="submit">Criar perfil</button></form></div>
     ${pfs.map(p => `<div class="perfil" data-id="${p.id}"><div class="row"><b style="flex:1;font-size:16px">${esc(p.nome)}</b><small style="color:var(--mu)">${uso(p.id)} operador(es)</small></div>
       ${checks(p.permissoes)}<div class="row"><button class="btn sm" data-a="salvar">Salvar permissões</button><button class="btn red sm" data-a="del">Excluir perfil</button></div></div>`).join('')}`;
