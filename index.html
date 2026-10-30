@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Portal Saúde Inteligente</title>
+<style>
+:root{--bg:#f4f6f7;--cd:#fff;--tx:#2c3e50;--mu:#7f8c8d;--ln:#d5dbdb;--dk:#34495e;--tl:#0f766e;--rd:#c0392b}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17202a;--cd:#212f3d;--tx:#ecf0f1;--mu:#aab7b8;--ln:#3b4d5e;--dk:#0e1620}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,"Segoe UI",Arial,sans-serif}
+h1,h2,h3{margin:0}
+.serif{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+a{color:var(--tl)}
+.btn{padding:9px 14px;border:0;border-radius:8px;background:var(--tl);color:#fff;font-weight:700}
+.btn.sec{background:transparent;color:var(--tx);border:1px solid var(--ln)}
+.btn.red{background:var(--rd)}
+.btn.sm{padding:5px 9px;font-size:12.5px}
+.btn:disabled{opacity:.55;cursor:wait}
+:focus-visible{outline:3px solid var(--tl);outline-offset:2px}
+input,select{padding:9px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);color:var(--tx)}
+label{display:grid;gap:6px;font-weight:600}
+
+/* topo */
+.top{background:var(--cd);border-bottom:1px solid var(--ln)}
+.top .in{max-width:1200px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between}
+.top nav{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.top .brand{font-weight:700;font-size:18px}
+.top small{color:var(--mu)}
+main{max-width:1200px;margin:0 auto;padding:16px}
+
+/* login */
+.center{min-height:100vh;display:grid;place-items:center;padding:16px}
+.box{background:var(--cd);border:1px solid var(--ln);border-radius:14px;padding:28px;width:min(400px,100%);display:grid;gap:14px;box-shadow:0 24px 60px -24px rgba(10,20,28,.4)}
+.box h2{font-size:28px;line-height:1.1}.box p{margin:0;color:var(--mu)}
+.err{color:var(--rd);min-height:1.3em;margin:0}
+
+/* home */
+.hero{padding:clamp(18px,4vw,40px) 0 18px}
+.hero h1{font-size:clamp(28px,5vw,46px);line-height:1.08;letter-spacing:-.02em;margin-bottom:8px}
+.hero p{margin:0;color:var(--mu);max-width:56ch}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.card{background:var(--cd);border:1px solid var(--ln);border-top:5px solid var(--tl);border-radius:12px;padding:20px;display:grid;gap:14px;align-content:space-between;min-height:210px}
+.card h2{font-size:26px;letter-spacing:.02em}
+.card .meta{color:var(--mu);font-size:13px;margin-top:4px}
+.card .acts{display:flex;flex-wrap:wrap;gap:8px}
+
+/* dashboard (igual ao dos sites originais) */
+#msg{margin:0 0 12px;padding:10px 12px;border-radius:6px;background:var(--cd);border-left:4px solid #3498db}#msg:empty{display:none}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.k{background:var(--cd);border-radius:8px;padding:12px;border-top:4px solid var(--dk);text-align:center}
+.k b{display:block;font-size:26px}.k span{font-size:11px;color:var(--mu);text-transform:uppercase}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:12px 0}
+.c{background:var(--cd);border-radius:8px;padding:12px;min-width:0}.c h2{font-size:14px;margin:0 0 8px}
+.c div{position:relative;height:250px}
+.f{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.f input{flex:1;min-width:180px}
+.t{overflow-x:auto;background:var(--cd);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--ln);vertical-align:top}
+th{background:var(--dk);color:#fff}
+.dash tr{cursor:pointer}
+.d{color:var(--mu);font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}tr.o .d{display:block}
+.s{border-radius:10px;padding:2px 9px;font-size:12px;color:#fff;white-space:nowrap}
+.empty{background:var(--cd);border:1px dashed var(--ln);border-radius:12px;padding:32px;text-align:center;color:var(--mu)}
+.pagehead{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:flex-end;justify-content:space-between;padding:12px 0 16px}
+.pagehead h1{font-size:clamp(26px,4vw,42px);line-height:1.08;letter-spacing:-.02em;max-width:18em}
+.pagehead small{color:var(--mu);display:block;margin-top:6px}
+
+/* admin */
+.tabs{display:flex;gap:6px;margin:8px 0 14px;flex-wrap:wrap}
+.tabs button{padding:8px 14px;border:1px solid var(--ln);background:var(--cd);color:var(--tx);border-radius:8px;font-weight:600}
+.tabs button.on{background:var(--tl);color:#fff;border-color:var(--tl)}
+.panel{background:var(--cd);border-radius:10px;padding:16px;margin-bottom:14px}
+.panel h3{margin-bottom:10px;font-size:16px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.row label{min-width:160px;flex:1}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;color:#fff;background:#27ae60}
+.badge.off{background:#7f8c8d}.badge.warn{background:#f39c12}
+.perms{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;margin:10px 0}
+.perms label{display:flex;gap:8px;align-items:center;font-weight:400}
+.perms input{padding:0;width:auto}
+.perfil{border:1px solid var(--ln);border-radius:10px;padding:14px;margin-bottom:12px}
+.perfil .row{align-items:center}
+
+/* modal e aviso */
+dialog{border:1px solid var(--ln);border-radius:14px;background:var(--cd);color:var(--tx);padding:22px;width:min(720px,94vw);max-height:90vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--dk);color:#fff;padding:10px 16px;border-radius:8px;z-index:50;max-width:92vw;display:none}
+#toast.bad{background:var(--rd)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* ============================================================
+   CONFIGURAÇÃO - cole aqui os dados do SEU projeto Supabase
+   (Project Settings > API)
+   ============================================================ */
+const CFG = {
+  url: 'https://ehpdlwpqktvtkmebrqfj.supabase.co',
+  key: 'sb_publishable_OzNd3V6yj-gHcNlyezWJpA_2dXwoIaV' // chave publishable (NUNCA a secret/service_role)
+};
+const DOMINIO = '@portal.app';              // precisa ser igual ao da Edge Function
+const SENHA_PADRAO = '123456';
+
+/* ------------------------------------------------------------ */
+const CIDADES = [
+  {slug:'perdigao', nome:'PERDIGÃO', titulo:'Perdigão'},
+  {slug:'perdizes', nome:'PERDIZES', titulo:'Perdizes'},
+  {slug:'pratinha', nome:'PRATINHA', titulo:'Pratinha'}
+];
+const cid = s => CIDADES.find(c => c.slug === s);
+const PERMS = [
+  ...CIDADES.flatMap(c => [['ver_'+c.slug,'Ver '+c.titulo],['upload_'+c.slug,'Enviar planilha de '+c.titulo]]),
+  ['gerenciar_operadores','Gerenciar operadores'],
+  ['gerenciar_perfis','Gerenciar perfis']
+];
+
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fm = s => s ? s.split('-').reverse().join('/') : '';
+const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+
+let sb, me = null, CH = [];
+const can = p => !!(me && me.perfis && me.perfis.permissoes.includes(p));
+
+function toast(msg, bad){
+  const t = $('#toast'); t.textContent = msg; t.className = bad ? 'bad' : ''; t.style.display = 'block';
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', bad ? 6000 : 3500);
+}
+function destroyCharts(){ CH.forEach(c => c.destroy()); CH = []; }
+const setView = html => { destroyCharts(); $('#root').innerHTML = html; };
+
+/* ============================================================
+   INÍCIO / SESSÃO
+   ============================================================ */
+async function boot(){
+  if (CFG.url.startsWith('COLE')) {
+    setView('<div class="center"><div class="box"><h2 class="serif">Falta configurar</h2><p>Abra o arquivo <b>index.html</b> num editor de texto e preencha <b>CFG.url</b> e <b>CFG.key</b> com os dados do seu projeto Supabase.</p></div></div>');
+    return;
+  }
+  sb = supabase.createClient(CFG.url, CFG.key);
+  const { data:{ session } } = await sb.auth.getSession();
+  if (!session) return showLogin();
+  if (!(await carregarMe())) return showLogin('Seu acesso está desativado ou não foi cadastrado.');
+  route();
+}
+
+async function carregarMe(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if (!user) { me = null; return false; }
+  const { data, error } = await sb.from('operadores').select('*, perfis(nome, permissoes)').eq('id', user.id).maybeSingle();
+  if (error || !data || !data.ativo) { await sb.auth.signOut(); me = null; return false; }
+  me = data; return true;
+}
+
+function showLogin(msg){
+  me = null;
+  setView(`<div class="center"><form class="box" id="lf">
+    <h2 class="serif">Portal Saúde Inteligente</h2><p>Entre com seu usuário e senha.</p>
+    <label>Usuário<input id="u" autocomplete="username" autocapitalize="none" required></label>
+    <label>Senha<input id="p" type="password" autocomplete="current-password" required></label>
+    <button class="btn" type="submit">Entrar</button><p class="err" id="err" role="alert">${esc(msg||'')}</p></form></div>`);
+  $('#lf').addEventListener('submit', async e => {
+    e.preventDefault();
+    const b = $('#lf .btn'); b.disabled = true;
+    const email = $('#u').value.trim().toLowerCase().split('@')[0] + DOMINIO;
+    const { error } = await sb.auth.signInWithPassword({ email, password: $('#p').value });
+    if (error) { $('#err').textContent = 'Usuário ou senha incorretos.'; $('#p').value=''; b.disabled=false; return; }
+    if (!(await carregarMe())) { showLogin('Seu acesso está desativado ou não foi cadastrado.'); return; }
+    location.hash = '#/'; route();
+  });
+}
+
+async function sair(){ await sb.auth.signOut(); me = null; location.hash = ''; showLogin(); }
+
+/* ============================================================
+   TROCA DE SENHA
+   ============================================================ */
+function showTrocar(forcado){
+  setView(`<div class="center"><form class="box" id="tf">
+    <h2 class="serif">${forcado ? 'Defina sua nova senha' : 'Trocar senha'}</h2>
+    <p>${forcado ? 'Este é seu primeiro acesso (ou sua senha foi redefinida). Escolha uma senha nova para continuar.' : 'Escolha uma senha nova.'}</p>
+    <label>Nova senha (mínimo 8 caracteres)<input id="n1" type="password" autocomplete="new-password" required minlength="8"></label>
+    <label>Repita a nova senha<input id="n2" type="password" autocomplete="new-password" required minlength="8"></label>
+    <button class="btn" type="submit">Salvar senha</button>
+    ${forcado ? '<button class="btn sec" type="button" id="sair">Sair</button>' : '<button class="btn sec" type="button" id="canc">Cancelar</button>'}
+    <p class="err" id="err" role="alert"></p></form></div>`);
+  $('#sair')?.addEventListener('click', sair);
+  $('#canc')?.addEventListener('click', () => { location.hash = '#/'; route(); });
+  $('#tf').addEventListener('submit', async e => {
+    e.preventDefault();
+    const a = $('#n1').value, b2 = $('#n2').value, er = $('#err');
+    if (a.length < 8) { er.textContent = 'Use pelo menos 8 caracteres.'; return; }
+    if (a === SENHA_PADRAO) { er.textContent = 'A nova senha não pode ser a senha padrão.'; return; }
+    if (a !== b2) { er.textContent = 'As senhas não conferem.'; return; }
+    const btn = $('#tf .btn'); btn.disabled = true;
+    const { error } = await sb.auth.updateUser({ password: a });
+    if (error) { er.textContent = error.message; btn.disabled = false; return; }
+    await sb.rpc('concluir_troca_senha');
+    me.trocar_senha = false;
+    toast('Senha alterada com sucesso.');
+    location.hash = '#/'; route();
+  });
+}
+
+/* ============================================================
+   ROTAS E CASCA
+   ============================================================ */
+function route(){
+  if (!me) return showLogin();
+  if (me.trocar_senha) return showTrocar(true);
+  const h = location.hash.replace(/^#\/?/, '').split('/');
+  if (h[0] === 'cidade' && cid(h[1]) && can('ver_'+h[1])) return showCidade(h[1]);
+  if (h[0] === 'admin' && (can('gerenciar_operadores') || can('gerenciar_perfis'))) return showAdmin();
+  showHome();
+}
+window.addEventListener('hashchange', () => { if (me) route(); });
+
+function shell(inner){
+  setView(`<header class="top"><div class="in">
+    <div><a class="brand serif" href="#/" style="text-decoration:none;color:inherit">Portal Saúde Inteligente</a></div>
+    <nav>
+      <small>${esc(me.nome)} · ${esc(me.perfis.nome)}</small>
+      <a class="btn sec sm" href="#/" style="text-decoration:none">Início</a>
+      ${(can('gerenciar_operadores')||can('gerenciar_perfis')) ? '<a class="btn sec sm" href="#/admin" style="text-decoration:none">Administração</a>' : ''}
+      <button class="btn sec sm" id="bsenha">Trocar senha</button>
+      <button class="btn sec sm" id="bsair">Sair</button>
+    </nav></div></header><main>${inner}</main>`);
+  $('#bsair').addEventListener('click', sair);
+  $('#bsenha').addEventListener('click', () => showTrocar(false));
+}
+
+/* ============================================================
+   TELA INICIAL (blocos das cidades)
+   ============================================================ */
+async function showHome(){
+  const vis = CIDADES.filter(c => can('ver_'+c.slug));
+  shell(`<div class="hero"><h1 class="serif">Escolha o município</h1><p>Clique no bloco para abrir o acompanhamento de demandas. Use "Enviar planilha" para atualizar os dados automaticamente.</p></div>
+    ${vis.length ? `<div class="cards">${vis.map(c => `<section class="card">
+      <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
+      <div class="acts"><a class="btn" href="#/cidade/${c.slug}" style="text-decoration:none">Abrir</a>
+      ${can('upload_'+c.slug) ? `<button class="btn sec" data-up="${c.slug}">Enviar planilha</button>` : ''}</div></section>`).join('')}</div>`
+    : '<div class="empty">Você ainda não tem acesso a nenhum município. Fale com o administrador.</div>'}`);
+  $$('[data-up]').forEach(b => b.addEventListener('click', () => escolherArquivo(b.dataset.up)));
+  if (!vis.length) return;
+  const { data: cs } = await sb.from('cidades').select('slug, atualizado_em');
+  for (const c of vis) {
+    const { count } = await sb.from('demandas').select('id', { count:'exact', head:true }).eq('cidade', c.slug);
+    const u = cs?.find(x => x.slug === c.slug)?.atualizado_em;
+    const el = $('#meta-'+c.slug);
+    if (el) el.textContent = `${count ?? 0} demandas · ` + (u ? 'atualizado em ' + new Date(u).toLocaleDateString('pt-BR') : 'nenhuma planilha enviada');
+  }
+}
+
+/* ============================================================
+   PÁGINA DA CIDADE (dashboard de demandas)
+   ============================================================ */
+const COL = {'Solucionado':'#27ae60','Pendente':'#f39c12','Em análise':'#3498db'};
+const stt = v => /^pend/i.test(v) ? 'Pendente' : /an[aá]lise/i.test(v) ? 'Em análise' : /solu|conclu|entreg/i.test(v) ? 'Solucionado' : '';
+const dd = r => r.s === 'Solucionado' && r.p && r.e ? Math.round((Date.parse(r.e) - Date.parse(r.p)) / 864e5) : null;
+
+async function carregarDemandas(slug){
+  const out = []; const passo = 1000;
+  for (let i = 0; ; i += passo) {
+    const { data, error } = await sb.from('demandas').select('*').eq('cidade', slug).order('numero').range(i, i + passo - 1);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < passo) break;
+  }
+  return out.map(r => ({ n:r.numero, t:r.titulo, d:r.descricao, m:r.modulo, s:r.status, p:r.data_pedido||'', e:r.data_entrega||'' }));
+}
+
+async function showCidade(slug){
+  const c = cid(slug);
+  shell(`<div class="pagehead"><div><h1 class="serif">Demandas do Saúde Inteligente de ${c.titulo}</h1>
+    <small id="upd">Carregando…</small></div>
+    <div class="row">${can('upload_'+slug) ? `<button class="btn" id="bup">Enviar planilha atualizada</button>` : ''}
+    <a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div><div id="app"></div>`);
+  $('#bup')?.addEventListener('click', () => escolherArquivo(slug));
+  try {
+    const [rows, { data: cd }] = await Promise.all([carregarDemandas(slug), sb.from('cidades').select('atualizado_em').eq('slug', slug).single()]);
+    $('#upd').textContent = cd?.atualizado_em ? 'Atualizado em ' + new Date(cd.atualizado_em).toLocaleDateString('pt-BR') : 'Nenhuma planilha enviada ainda';
+    if (!rows.length) { $('#app').innerHTML = `<div class="empty">Ainda não há demandas cadastradas para ${c.titulo}.${can('upload_'+slug) ? ' Use o botão "Enviar planilha atualizada" para carregar.' : ''}</div>`; return; }
+    renderDash(rows);
+  } catch (e) { $('#app').innerHTML = `<div class="empty">Erro ao carregar: ${esc(e.message)}</div>`; }
+}
+
+function renderDash(R){
+  const mods = [...new Set(R.map(r => r.m).filter(Boolean))].sort();
+  const n = s => R.filter(r => r.s === s).length, tot = R.length, sol = n('Solucionado'), pen = n('Pendente'), ana = n('Em análise');
+  const ds = R.map(dd).filter(x => x !== null && x >= 0).sort((a,b) => a-b), L = ds.length;
+  const med = L ? (L%2 ? ds[(L-1)/2] : (ds[L/2-1]+ds[L/2])/2) : 0, avg = L ? ds.reduce((a,b) => a+b, 0)/L : 0;
+  const f1 = x => x.toFixed(1).replace('.', ',');
+  const k = (v,l,c) => `<div class="k" style="border-top-color:${c||'var(--dk)'}"><b style="color:${c||'inherit'}">${v}</b><span>${l}</span></div>`;
+  $('#app').innerHTML = `<div class="dash"><div class="kpis">${k(tot,'Total')}${k(sol,'Solucionadas','#27ae60')}${k(pen,'Pendentes','#f39c12')}${k(ana,'Em análise','#3498db')}${k(tot?f1(sol/tot*100)+'%':'0%','Resolvidas')}${k(f1(avg),'Tempo médio (dias)')}${k(f1(med),'Tempo mediano (dias)')}</div>
+  <div class="grid"><div class="c"><h2>Status</h2><div><canvas id="c1"></canvas></div></div><div class="c"><h2>Demandas por módulo</h2><div><canvas id="c2"></canvas></div></div><div class="c"><h2>Pedidas x entregues por mês</h2><div><canvas id="c3"></canvas></div></div><div class="c"><h2>Tempo de entrega (dias)</h2><div><canvas id="c4"></canvas></div></div></div>
+  <div class="f"><input id="q" placeholder="Buscar por número, título ou descrição"><select id="fs"><option value="">Todos os status</option>${Object.keys(COL).map(s => `<option>${s}</option>`).join('')}</select><select id="fmo"><option value="">Todos os módulos</option>${mods.map(m => `<option>${esc(m)}</option>`).join('')}</select></div>
+  <p id="cnt"></p><div class="t"><table><thead><tr><th>Nº</th><th>Demanda</th><th>Módulo</th><th>Status</th><th>Pedido</th><th>Entrega</th><th>Dias</th></tr></thead><tbody id="tb"></tbody></table></div></div>`;
+  Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--mu').trim() || '#7f8c8d';
+  const mk = (id, cfg) => { cfg.options = Object.assign({responsive:true, maintainAspectRatio:false}, cfg.options); CH.push(new Chart($(id), cfg)); };
+  mk('#c1', {type:'doughnut', data:{labels:Object.keys(COL), datasets:[{data:[sol,pen,ana], backgroundColor:Object.values(COL), borderWidth:0}]}, options:{plugins:{legend:{position:'right'}}}});
+  mk('#c2', {type:'bar', data:{labels:mods, datasets:Object.keys(COL).map(s => ({label:s, data:mods.map(m => R.filter(r => r.m===m && r.s===s).length), backgroundColor:COL[s]}))}, options:{indexAxis:'y', scales:{x:{stacked:true}, y:{stacked:true}}, plugins:{legend:{position:'bottom'}}}});
+  const ks = [...R.map(r => r.p), ...R.map(r => r.e)].filter(Boolean).map(x => x.slice(0,7)).sort(), ms = [];
+  if (ks.length) { let [y,m] = ks[0].split('-').map(Number); const [y2,m2] = ks[ks.length-1].split('-').map(Number);
+    while (y<y2 || (y===y2 && m<=m2)) { ms.push(y+'-'+String(m).padStart(2,'0')); if (++m>12) { m=1; y++; } } }
+  const cm = (a,q) => R.filter(r => r[a] && r[a].slice(0,7) === q).length;
+  mk('#c3', {type:'bar', data:{labels:ms.map(q => q.slice(5)+'/'+q.slice(0,4)), datasets:[{label:'Pedidas', data:ms.map(q => cm('p',q)), backgroundColor:'#5d7a96'}, {label:'Entregues', data:ms.map(q => cm('e',q)), backgroundColor:'#27ae60'}]}, options:{plugins:{legend:{position:'bottom'}}}});
+  const B = [['Mesmo dia',0,0],['1 dia',1,1],['2 a 3',2,3],['4 a 7',4,7],['8 a 30',8,30],['Mais de 30',31,1e9]];
+  mk('#c4', {type:'bar', data:{labels:B.map(b => b[0]), datasets:[{label:'Demandas', data:B.map(b => ds.filter(x => x>=b[1] && x<=b[2]).length), backgroundColor:'#3498db'}]}, options:{plugins:{legend:{display:false}}}});
+  const draw = () => { const q = $('#q').value.toLowerCase(), s = $('#fs').value, m = $('#fmo').value;
+    const T = [...R].sort((a,b) => b.n-a.n).filter(r => (!s||r.s===s) && (!m||r.m===m) && (!q || (r.n+' '+r.t+' '+r.d).toLowerCase().includes(q)));
+    $('#cnt').textContent = T.length + ' de ' + tot + ' demandas';
+    $('#tb').innerHTML = T.map(r => { const d = dd(r); return `<tr><td>${r.n}</td><td><b>${esc(r.t)}</b><div class="d">${esc(r.d)}</div></td><td>${esc(r.m)}</td><td><span class="s" style="background:${COL[r.s]||'#7f8c8d'}">${esc(r.s)}</span></td><td>${fm(r.p)}</td><td>${fm(r.e)}</td><td>${d===null?'':d}</td></tr>`; }).join(''); };
+  ['#q','#fs','#fmo'].forEach(i => $(i).addEventListener('input', draw));
+  $('#tb').addEventListener('click', e => { const t = e.target.closest('tr'); if (t) t.classList.toggle('o'); });
+  draw();
+}
+
+/* ============================================================
+   UPLOAD DE PLANILHA
+   ============================================================ */
+const MAPA = [
+  ['n', h => ['n','no','num','numero','id','codigo','cod'].includes(h) || h.startsWith('numero') || h.startsWith('nda')],
+  ['t', h => h.includes('titulo') || h === 'demanda' || h.includes('assunto') || h.includes('resumo')],
+  ['d', h => h.includes('descri') || h.includes('detalhe')],
+  ['m', h => h.includes('modulo')],
+  ['s', h => h.includes('status') || h.includes('situacao')],
+  ['p', h => h.includes('pedid') || h.includes('abertura') || h.includes('solicit') || h.includes('cadastro')],
+  ['e', h => h.includes('entreg') || h.includes('conclu') || h.includes('resolu') || h.includes('fechamento')]
+];
+function mapear(headers){
+  const usados = new Set(), m = {};
+  for (const [k, f] of MAPA) { const h = headers.find(x => !usados.has(x) && f(norm(x))); if (h) { m[k] = h; usados.add(h); } }
+  return m;
+}
+function paraISO(v){
+  if (v === '' || v == null) return null;
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0,10);
+  const a = String(v).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (a) return a[3] + '-' + a[2].padStart(2,'0') + '-' + a[1].padStart(2,'0');
+  const b = String(v).match(/^\d{4}-\d{2}-\d{2}/);
+  return b ? b[0] : null;
+}
+
+function escolherArquivo(slug){
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = '.xlsx,.xls,.csv';
+  i.onchange = () => { if (i.files[0]) lerPlanilha(slug, i.files[0]); };
+  i.click();
+}
+
+async function lerPlanilha(slug, file){
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type:'array' });
+    let rows = null, mapa = null;
+    for (const nome of wb.SheetNames) {
+      const json = XLSX.utils.sheet_to_json(wb.Sheets[nome], { defval:'', raw:true });
+      if (!json.length) continue;
+      const mp = mapear(Object.keys(json[0]));
+      if (mp.t) { rows = json; mapa = mp; break; }
+    }
+    if (!rows) throw new Error('Não encontrei uma coluna de título/demanda. Confira o cabeçalho da planilha.');
+    const vistos = new Map(); let ignoradas = 0;
+    rows.forEach((r, idx) => {
+      const titulo = String(r[mapa.t] ?? '').trim();
+      const descricao = mapa.d ? String(r[mapa.d] ?? '').trim() : '';
+      if (!titulo && !descricao) { ignoradas++; return; }
+      let numero = mapa.n ? parseInt(String(r[mapa.n]).replace(/\D/g, ''), 10) : NaN;
+      if (!numero) numero = idx + 1;
+      const bruto = mapa.s ? String(r[mapa.s] ?? '').trim() : '';
+      vistos.set(numero, {
+        numero, titulo, descricao,
+        modulo: mapa.m ? String(r[mapa.m] ?? '').trim() : '',
+        status: stt(bruto) || bruto,
+        data_pedido: mapa.p ? paraISO(r[mapa.p]) : null,
+        data_entrega: mapa.e ? paraISO(r[mapa.e]) : null
+      });
+    });
+    const lista = [...vistos.values()].sort((a,b) => a.numero - b.numero);
+    if (!lista.length) throw new Error('A planilha não tem linhas com dados.');
+    previewUpload(slug, lista, file.name, ignoradas, mapa);
+  } catch (e) { toast('Não consegui ler a planilha: ' + e.message, true); }
+}
+
+function previewUpload(slug, lista, nomeArq, ignoradas, mapa){
+  const c = cid(slug), dlg = document.createElement('dialog');
+  const cont = s => lista.filter(r => r.status === s).length;
+  const faltam = [['n','Nº'],['d','Descrição'],['m','Módulo'],['s','Status'],['p','Data do pedido'],['e','Data da entrega']].filter(([k]) => !mapa[k]).map(x => x[1]);
+  dlg.innerHTML = `<h3 class="serif" style="font-size:24px;margin-bottom:6px">Atualizar ${c.titulo}</h3>
+    <p style="margin:0 0 10px;color:var(--mu)">Arquivo: <b>${esc(nomeArq)}</b> · ${lista.length} demandas lidas${ignoradas ? ` · ${ignoradas} linhas vazias ignoradas` : ''}</p>
+    <p style="margin:0 0 10px">Solucionadas: <b>${cont('Solucionado')}</b> · Pendentes: <b>${cont('Pendente')}</b> · Em análise: <b>${cont('Em análise')}</b></p>
+    ${faltam.length ? `<p style="margin:0 0 10px;color:#b9770e">Colunas não encontradas (ficarão vazias): ${faltam.join(', ')}</p>` : ''}
+    <div class="t" style="max-height:240px;overflow:auto"><table style="min-width:520px"><thead><tr><th>Nº</th><th>Título</th><th>Módulo</th><th>Status</th><th>Pedido</th><th>Entrega</th></tr></thead><tbody>
+    ${lista.slice(0,6).map(r => `<tr><td>${r.numero}</td><td>${esc(r.titulo).slice(0,70)}</td><td>${esc(r.modulo)}</td><td>${esc(r.status)}</td><td>${fm(r.data_pedido||'')}</td><td>${fm(r.data_entrega||'')}</td></tr>`).join('')}</tbody></table></div>
+    <p style="margin:12px 0;color:var(--rd)"><b>Atenção:</b> isto substitui todas as demandas atuais de ${c.titulo} pelas desta planilha.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn sec" id="x-c">Cancelar</button><button class="btn" id="x-ok">Confirmar e atualizar</button></div>`;
+  document.body.appendChild(dlg); dlg.showModal();
+  const fechar = () => { dlg.close(); dlg.remove(); };
+  $('#x-c', dlg).onclick = fechar;
+  $('#x-ok', dlg).onclick = async () => {
+    $('#x-ok', dlg).disabled = true;
+    const { data, error } = await sb.rpc('substituir_demandas', { p_cidade: slug, p_rows: lista });
+    if (error) { toast('Erro ao atualizar: ' + error.message, true); $('#x-ok', dlg).disabled = false; return; }
+    fechar(); toast(`${data} demandas atualizadas em ${c.titulo}.`); route();
+  };
+}
+
+/* ============================================================
+   ADMINISTRAÇÃO (operadores e perfis)
+   ============================================================ */
+let abaAdmin = null;
+async function adm(body){
+  const { data, error } = await sb.functions.invoke('admin-users', { body });
+  if (error) throw new Error(error.message);
+  if (data && data.erro) throw new Error(data.erro);
+  return data;
+}
+
+function showAdmin(){
+  const ops = can('gerenciar_operadores'), pfs = can('gerenciar_perfis');
+  if (!abaAdmin || (abaAdmin === 'op' && !ops) || (abaAdmin === 'pf' && !pfs)) abaAdmin = ops ? 'op' : 'pf';
+  shell(`<div class="pagehead"><h1 class="serif">Administração</h1></div>
+    <div class="tabs">${ops ? `<button data-t="op" class="${abaAdmin==='op'?'on':''}">Operadores</button>` : ''}${pfs ? `<button data-t="pf" class="${abaAdmin==='pf'?'on':''}">Perfis e permissões</button>` : ''}</div><div id="adm"></div>`);
+  $$('.tabs button').forEach(b => b.addEventListener('click', () => { abaAdmin = b.dataset.t; showAdmin(); }));
+  abaAdmin === 'op' ? abaOperadores() : abaPerfis();
+}
+
+async function abaOperadores(){
+  const box = $('#adm'); box.innerHTML = 'Carregando…';
+  const [{ data: ops }, { data: pfs }] = await Promise.all([
+    sb.from('operadores').select('*, perfis(nome)').order('usuario'),
+    sb.from('perfis').select('id, nome').order('nome')
+  ]);
+  const opt = sel => pfs.map(p => `<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.nome)}</option>`).join('');
+  box.innerHTML = `<div class="panel"><h3>Novo operador</h3>
+    <form class="row" id="nf"><label>Usuário (login)<input id="nu" required pattern="[a-z0-9._-]{3,30}" placeholder="ex.: maria.silva" autocapitalize="none"></label>
+    <label>Nome completo<input id="nn" required></label>
+    <label>Perfil<select id="np" required>${opt()}</select></label>
+    <button class="btn" type="submit">Cadastrar</button></form>
+    <p style="margin:10px 0 0;color:var(--mu)">A senha inicial é <b>${SENHA_PADRAO}</b>. No primeiro acesso o operador será obrigado a trocá-la.</p></div>
+    <div class="panel"><h3>Operadores cadastrados (${ops.length})</h3><div class="t"><table><thead><tr><th>Usuário</th><th>Nome</th><th>Perfil</th><th>Situação</th><th>Ações</th></tr></thead><tbody>
+    ${ops.map(o => `<tr data-id="${o.id}"><td>${esc(o.usuario)}</td><td>${esc(o.nome)}</td>
+      <td><select data-a="perfil" ${o.id===me.id?'disabled':''}>${opt(o.perfil_id)}</select></td>
+      <td><span class="badge ${o.ativo?'':'off'}">${o.ativo?'Ativo':'Inativo'}</span> ${o.trocar_senha?'<span class="badge warn">Troca de senha pendente</span>':''}</td>
+      <td><div class="row"><button class="btn sec sm" data-a="resetar">Resetar senha</button>
+      ${o.id===me.id ? '' : `<button class="btn sec sm" data-a="ativo" data-v="${o.ativo?0:1}">${o.ativo?'Desativar':'Ativar'}</button><button class="btn red sm" data-a="excluir">Excluir</button>`}</div></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+
+  $('#nf').addEventListener('submit', async e => {
+    e.preventDefault();
+    try { await adm({ action:'criar', usuario:$('#nu').value, nome:$('#nn').value, perfil_id:$('#np').value }); toast('Operador cadastrado.'); abaOperadores(); }
+    catch (er) { toast(er.message, true); }
+  });
+  box.onclick = async e => {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    const tr = b.closest('tr'), id = tr.dataset.id, u = tr.children[0].textContent;
+    try {
+      if (b.dataset.a === 'resetar') { if (!confirm(`Resetar a senha de "${u}" para ${SENHA_PADRAO}?`)) return; await adm({ action:'resetar', id }); toast('Senha redefinida. No próximo acesso ele precisará trocá-la.'); }
+      if (b.dataset.a === 'ativo') { await adm({ action:'ativo', id, ativo: b.dataset.v === '1' }); toast('Situação atualizada.'); }
+      if (b.dataset.a === 'excluir') { if (!confirm(`Excluir o operador "${u}" definitivamente?`)) return; await adm({ action:'excluir', id }); toast('Operador excluído.'); }
+      abaOperadores();
+    } catch (er) { toast(er.message, true); }
+  };
+  box.onchange = async e => {
+    const s = e.target.closest('select[data-a="perfil"]'); if (!s) return;
+    try { await adm({ action:'perfil', id: s.closest('tr').dataset.id, perfil_id: s.value }); toast('Perfil atualizado.'); }
+    catch (er) { toast(er.message, true); abaOperadores(); }
+  };
+}
+
+async function abaPerfis(){
+  const box = $('#adm'); box.innerHTML = 'Carregando…';
+  const [{ data: pfs }, { data: ops }] = await Promise.all([
+    sb.from('perfis').select('*').order('nome'),
+    sb.from('operadores').select('perfil_id')
+  ]);
+  const uso = id => ops.filter(o => o.perfil_id === id).length;
+  const checks = (sel=[]) => `<div class="perms">${PERMS.map(([k,l]) => `<label><input type="checkbox" value="${k}" ${sel.includes(k)?'checked':''}> ${l}</label>`).join('')}</div>`;
+  box.innerHTML = `<div class="panel"><h3>Novo perfil</h3><form id="pn"><label>Nome do perfil<input id="pnn" required placeholder="ex.: Operador Perdizes"></label>${checks()}<button class="btn" type="submit">Criar perfil</button></form></div>
+    ${pfs.map(p => `<div class="perfil" data-id="${p.id}"><div class="row"><b style="flex:1;font-size:16px">${esc(p.nome)}</b><small style="color:var(--mu)">${uso(p.id)} operador(es)</small></div>
+      ${checks(p.permissoes)}<div class="row"><button class="btn sm" data-a="salvar">Salvar permissões</button><button class="btn red sm" data-a="del">Excluir perfil</button></div></div>`).join('')}`;
+
+  const lerChecks = el => $$('input[type=checkbox]:checked', el).map(i => i.value);
+  $('#pn').addEventListener('submit', async e => {
+    e.preventDefault();
+    const { error } = await sb.from('perfis').insert({ nome: $('#pnn').value.trim(), permissoes: lerChecks($('#pn')) });
+    if (error) return toast(error.code === '23505' ? 'Já existe um perfil com esse nome.' : error.message, true);
+    toast('Perfil criado.'); abaPerfis();
+  });
+  $$('.perfil').forEach(div => div.addEventListener('click', async e => {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    const id = div.dataset.id;
+    if (b.dataset.a === 'salvar') {
+      const { error } = await sb.from('perfis').update({ permissoes: lerChecks(div) }).eq('id', id);
+      return error ? toast(error.message, true) : toast('Permissões salvas.');
+    }
+    if (b.dataset.a === 'del') {
+      if (!confirm('Excluir este perfil?')) return;
+      const { error } = await sb.from('perfis').delete().eq('id', id);
+      if (error) return toast(error.code === '23503' ? 'Esse perfil está em uso por operadores. Troque o perfil deles antes de excluir.' : error.message, true);
+      toast('Perfil excluído.'); abaPerfis();
+    }
+  }));
+}
+
+boot();
+</script>
+</body>
+</html>
