@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Portal de Demandas</title>
+<title>Portal Saúde Inteligente</title>
 <style>
 :root{--bg:#f4f6f7;--cd:#fff;--tx:#2c3e50;--mu:#7f8c8d;--ln:#d5dbdb;--dk:#34495e;--tl:#0f766e;--rd:#c0392b}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17202a;--cd:#212f3d;--tx:#ecf0f1;--mu:#aab7b8;--ln:#3b4d5e;--dk:#0e1620}}
@@ -129,6 +129,7 @@ const fm = s => s ? s.split('-').reverse().join('/') : '';
 const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 
 let sb, me = null, CH = [];
+let ESTADO = { slug:null, rows:[], T:[], filtro:'', upd:'' };
 const ehAdmin = () => can('gerenciar_operadores') || can('gerenciar_perfis') || can('gerenciar_cidades');
 const can = p => !!(me && me.perfis && me.perfis.permissoes.includes(p));
 
@@ -173,7 +174,7 @@ async function carregarCidades(){
 function showLogin(msg){
   me = null;
   setView(`<div class="center"><form class="box" id="lf">
-    <h2 class="serif">Portal de Demandas</h2><p>Entre com seu usuário e senha.</p>
+    <h2 class="serif">Portal Saúde Inteligente</h2><p>Entre com seu usuário e senha.</p>
     <label>Usuário<input id="u" autocomplete="username" autocapitalize="none" required></label>
     <label>Senha<input id="p" type="password" autocomplete="current-password" required></label>
     <button class="btn" type="submit">Entrar</button><p class="err" id="err" role="alert">${esc(msg||'')}</p></form></div>`);
@@ -235,7 +236,7 @@ window.addEventListener('hashchange', () => { if (me) route(); });
 
 function shell(inner){
   setView(`<header class="top"><div class="in">
-    <div><a class="brand serif" href="#/" style="text-decoration:none;color:inherit">Portal de Demandas</a></div>
+    <div><a class="brand serif" href="#/" style="text-decoration:none;color:inherit">Portal Saúde Inteligente</a></div>
     <nav>
       <small>${esc(me.nome)} · ${esc(me.perfis.nome)}</small>
       <a class="btn sec sm" href="#/" style="text-decoration:none">Início</a>
@@ -252,7 +253,7 @@ function shell(inner){
    ============================================================ */
 async function showHome(){
   const vis = CIDADES.filter(c => can('ver_'+c.slug));
-  shell(`<div class="hero"><h1 class="serif">Escolha o município para ver as demandas</h1>
+  shell(`<div class="hero"><h1 class="serif">Escolha o município</h1><p>Clique no bloco para abrir o acompanhamento de demandas. Use "Enviar planilha" para atualizar os dados automaticamente.</p>
     ${can('gerenciar_cidades') ? '<p style="margin-top:14px"><button class="btn" id="bnova">+ Nova cidade</button></p>' : ''}</div>
     ${vis.length ? `<div class="cards">${vis.map(c => `<section class="card">
       <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
@@ -294,14 +295,35 @@ async function showCidade(slug){
   shell(`<div class="pagehead"><div><h1 class="serif">Demandas do Saúde Inteligente de ${c.titulo}</h1>
     <small id="upd">Carregando…</small></div>
     <div class="row">${can('upload_'+slug) ? `<button class="btn" id="bup">Enviar planilha atualizada</button>` : ''}
-    <a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div><div id="app"></div>`);
+    <span class="row" id="pdfbtns"></span><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div><div id="app"></div>`);
   $('#bup')?.addEventListener('click', () => escolherArquivo(slug));
   try {
     const [rows, { data: cd }] = await Promise.all([carregarDemandas(slug), sb.from('cidades').select('atualizado_em').eq('slug', slug).single()]);
     $('#upd').textContent = cd?.atualizado_em ? 'Atualizado em ' + new Date(cd.atualizado_em).toLocaleDateString('pt-BR') : 'Nenhuma planilha enviada ainda';
     if (!rows.length) { $('#app').innerHTML = `<div class="empty">Ainda não há demandas cadastradas para ${c.titulo}.${can('upload_'+slug) ? ' Use o botão "Enviar planilha atualizada" para carregar.' : ''}</div>`; return; }
+    ESTADO = { slug, rows, T:rows, filtro:'', upd: $('#upd').textContent };
+    $('#pdfbtns').innerHTML = '<button class="btn sec" id="bpd">Gerar PDF do dashboard</button><button class="btn sec" id="bpl">Gerar PDF das demandas</button>';
+    $('#bpd').addEventListener('click', pdfDashboard);
+    $('#bpl').addEventListener('click', pdfDemandas);
     renderDash(rows);
   } catch (e) { $('#app').innerHTML = `<div class="empty">Erro ao carregar: ${esc(e.message)}</div>`; }
+}
+
+function graficoCfgs(R){
+  const mods = [...new Set(R.map(r => r.m).filter(Boolean))].sort();
+  const n = s => R.filter(r => r.s === s).length, sol = n('Solucionado'), pen = n('Pendente'), ana = n('Em análise');
+  const ds = R.map(dd).filter(x => x !== null && x >= 0).sort((a,b) => a-b);
+  const ks = [...R.map(r => r.p), ...R.map(r => r.e)].filter(Boolean).map(x => x.slice(0,7)).sort(), ms = [];
+  if (ks.length) { let [y,m] = ks[0].split('-').map(Number); const [y2,m2] = ks[ks.length-1].split('-').map(Number);
+    while (y<y2 || (y===y2 && m<=m2)) { ms.push(y+'-'+String(m).padStart(2,'0')); if (++m>12) { m=1; y++; } } }
+  const cm = (a,q) => R.filter(r => r[a] && r[a].slice(0,7) === q).length;
+  const B = [['Mesmo dia',0,0],['1 dia',1,1],['2 a 3',2,3],['4 a 7',4,7],['8 a 30',8,30],['Mais de 30',31,1e9]];
+  return [
+    {type:'doughnut', data:{labels:Object.keys(COL), datasets:[{data:[sol,pen,ana], backgroundColor:Object.values(COL), borderWidth:0}]}, options:{plugins:{legend:{position:'right'}}}},
+    {type:'bar', data:{labels:mods, datasets:Object.keys(COL).map(s => ({label:s, data:mods.map(m => R.filter(r => r.m===m && r.s===s).length), backgroundColor:COL[s]}))}, options:{indexAxis:'y', scales:{x:{stacked:true}, y:{stacked:true}}, plugins:{legend:{position:'bottom'}}}},
+    {type:'bar', data:{labels:ms.map(q => q.slice(5)+'/'+q.slice(0,4)), datasets:[{label:'Pedidas', data:ms.map(q => cm('p',q)), backgroundColor:'#5d7a96'}, {label:'Entregues', data:ms.map(q => cm('e',q)), backgroundColor:'#27ae60'}]}, options:{plugins:{legend:{position:'bottom'}}}},
+    {type:'bar', data:{labels:B.map(b => b[0]), datasets:[{label:'Demandas', data:B.map(b => ds.filter(x => x>=b[1] && x<=b[2]).length), backgroundColor:'#3498db'}]}, options:{plugins:{legend:{display:false}}}},
+  ];
 }
 
 function renderDash(R){
@@ -317,17 +339,10 @@ function renderDash(R){
   <p id="cnt"></p><div class="t"><table><thead><tr><th>Nº</th><th>Demanda</th><th>Módulo</th><th>Status</th><th>Pedido</th><th>Entrega</th><th>Dias</th></tr></thead><tbody id="tb"></tbody></table></div></div>`;
   Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--mu').trim() || '#7f8c8d';
   const mk = (id, cfg) => { cfg.options = Object.assign({responsive:true, maintainAspectRatio:false}, cfg.options); CH.push(new Chart($(id), cfg)); };
-  mk('#c1', {type:'doughnut', data:{labels:Object.keys(COL), datasets:[{data:[sol,pen,ana], backgroundColor:Object.values(COL), borderWidth:0}]}, options:{plugins:{legend:{position:'right'}}}});
-  mk('#c2', {type:'bar', data:{labels:mods, datasets:Object.keys(COL).map(s => ({label:s, data:mods.map(m => R.filter(r => r.m===m && r.s===s).length), backgroundColor:COL[s]}))}, options:{indexAxis:'y', scales:{x:{stacked:true}, y:{stacked:true}}, plugins:{legend:{position:'bottom'}}}});
-  const ks = [...R.map(r => r.p), ...R.map(r => r.e)].filter(Boolean).map(x => x.slice(0,7)).sort(), ms = [];
-  if (ks.length) { let [y,m] = ks[0].split('-').map(Number); const [y2,m2] = ks[ks.length-1].split('-').map(Number);
-    while (y<y2 || (y===y2 && m<=m2)) { ms.push(y+'-'+String(m).padStart(2,'0')); if (++m>12) { m=1; y++; } } }
-  const cm = (a,q) => R.filter(r => r[a] && r[a].slice(0,7) === q).length;
-  mk('#c3', {type:'bar', data:{labels:ms.map(q => q.slice(5)+'/'+q.slice(0,4)), datasets:[{label:'Pedidas', data:ms.map(q => cm('p',q)), backgroundColor:'#5d7a96'}, {label:'Entregues', data:ms.map(q => cm('e',q)), backgroundColor:'#27ae60'}]}, options:{plugins:{legend:{position:'bottom'}}}});
-  const B = [['Mesmo dia',0,0],['1 dia',1,1],['2 a 3',2,3],['4 a 7',4,7],['8 a 30',8,30],['Mais de 30',31,1e9]];
-  mk('#c4', {type:'bar', data:{labels:B.map(b => b[0]), datasets:[{label:'Demandas', data:B.map(b => ds.filter(x => x>=b[1] && x<=b[2]).length), backgroundColor:'#3498db'}]}, options:{plugins:{legend:{display:false}}}});
+  graficoCfgs(R).forEach((cfg, i) => mk('#c' + (i + 1), cfg));
   const draw = () => { const q = $('#q').value.toLowerCase(), s = $('#fs').value, m = $('#fmo').value;
     const T = [...R].sort((a,b) => b.n-a.n).filter(r => (!s||r.s===s) && (!m||r.m===m) && (!q || (r.n+' '+r.t+' '+r.d).toLowerCase().includes(q)));
+    ESTADO.T = T; ESTADO.filtro = [q && `busca: "${q}"`, s && `status: ${s}`, m && `módulo: ${m}`].filter(Boolean).join(' · ');
     $('#cnt').textContent = T.length + ' de ' + tot + ' demandas';
     $('#tb').innerHTML = T.map(r => { const d = dd(r); return `<tr><td>${r.n}</td><td><b>${esc(r.t)}</b><div class="d">${esc(r.d)}</div></td><td>${esc(r.m)}</td><td><span class="s" style="background:${COL[r.s]||'#7f8c8d'}">${esc(r.s)}</span></td><td>${fm(r.p)}</td><td>${fm(r.e)}</td><td>${d===null?'':d}</td></tr>`; }).join(''); };
   ['#q','#fs','#fmo'].forEach(i => $(i).addEventListener('input', draw));
@@ -445,6 +460,122 @@ function previewUpload(slug, lista, nomeArq, ignoradas, mapa, nota, atuais){
     if (error) { toast('Erro ao atualizar: ' + error.message, true); $('#x-ok', dlg).disabled = false; return; }
     fechar(); toast(`${data} demandas atualizadas em ${c.titulo}.`); route();
   };
+}
+
+/* ============================================================
+   PDF (dashboard e demandas) - abre a janela de impressão do
+   navegador com layout próprio; escolha "Salvar como PDF".
+   ============================================================ */
+const PRINT_CSS = `
+*{box-sizing:border-box}
+body{margin:0;font:11px/1.45 "Segoe UI",Arial,Helvetica,sans-serif;color:#2c3e50;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;background:#1f3a4d;color:#fff;padding:16px 18px;border-radius:8px;border-bottom:4px solid #0f766e}
+.eyebrow{font-size:9px;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+h1{font:700 21px/1.15 Georgia,"Times New Roman",serif;margin:4px 0}
+.sub{font-size:10.5px;opacity:.88}
+.emit{font-size:9.5px;text-align:right;opacity:.9;white-space:nowrap}
+h2{font:700 13px Georgia,"Times New Roman",serif;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid #d5dbdb;color:#1f3a4d;break-after:avoid}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.k{border:1px solid #d5dbdb;border-top:4px solid #34495e;border-radius:6px;padding:8px 6px;text-align:center;break-inside:avoid}
+.k b{display:block;font-size:20px;line-height:1.2}
+.k span{font-size:8.5px;text-transform:uppercase;color:#7f8c8d;letter-spacing:.04em}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+figure{margin:0;border:1px solid #d5dbdb;border-radius:6px;padding:8px;break-inside:avoid}
+figcaption{font-weight:700;font-size:10.5px;margin-bottom:4px}
+figure img{width:100%;display:block}
+table{width:100%;border-collapse:collapse}
+thead{display:table-header-group}
+th{background:#1f3a4d;color:#fff;text-align:left;padding:6px 8px;font-size:9.5px;letter-spacing:.03em}
+td{padding:6px 8px;border-bottom:1px solid #e5e8e8;vertical-align:top}
+tr{break-inside:avoid}
+tbody tr:nth-child(even) td{background:#f6f8f9}
+.num{text-align:right;white-space:nowrap}
+.pill{display:inline-block;border-radius:10px;padding:1px 8px;font-size:9px;font-weight:700;color:#fff;white-space:nowrap}
+.desc{color:#5d6d7e;font-size:9.5px;margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
+.chip{border:1px solid #d5dbdb;border-radius:14px;padding:3px 10px;font-size:10px}
+.chip b{font-size:11px}
+.flt{color:#7f8c8d;font-size:10px;margin:4px 0 8px}
+@page{margin:12mm;@bottom-center{content:"Portal Saúde Inteligente  ·  página " counter(page) " de " counter(pages);font:8.5px "Segoe UI",Arial,sans-serif;color:#7f8c8d}}
+`;
+
+function imprimirHTML(html, titulo){
+  const f = document.createElement('iframe');
+  f.setAttribute('aria-hidden', 'true');
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(f);
+  const w = f.contentWindow, doc = w.document;
+  doc.open(); doc.write(html); doc.close();
+  const antigo = document.title; document.title = titulo;
+  const limpar = () => { document.title = antigo; setTimeout(() => f.remove(), 800); };
+  Promise.all([...doc.images].map(i => i.complete ? 1 : new Promise(r => { i.onload = i.onerror = r; }))).then(() => {
+    setTimeout(() => { w.addEventListener('afterprint', limpar); w.focus(); w.print(); setTimeout(() => { if (document.title === titulo) limpar(); }, 60000); }, 300);
+  });
+  toast('Na janela que abrir, escolha "Salvar como PDF" como destino.');
+}
+
+const agoraBR = () => new Date().toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
+const hoje = () => new Date().toISOString().slice(0, 10);
+const cabecalhoPDF = (titulo, sub) => `<header class="hd"><div><div class="eyebrow">Portal Saúde Inteligente</div><h1>${esc(titulo)}</h1><div class="sub">${esc(sub)}</div></div><div class="emit">Emitido em<br><b>${agoraBR()}</b></div></header>`;
+
+function estatisticas(R){
+  const n = s => R.filter(r => r.s === s).length, tot = R.length, sol = n('Solucionado'), pen = n('Pendente'), ana = n('Em análise');
+  const ds = R.map(dd).filter(x => x !== null && x >= 0).sort((a,b) => a-b), L = ds.length;
+  const med = L ? (L%2 ? ds[(L-1)/2] : (ds[L/2-1]+ds[L/2])/2) : 0, avg = L ? ds.reduce((a,b) => a+b, 0)/L : 0;
+  return { tot, sol, pen, ana, avg, med, pct: tot ? sol/tot*100 : 0 };
+}
+const f1 = x => x.toFixed(1).replace('.', ',');
+
+function pdfDashboard(){
+  const c = cid(ESTADO.slug), R = ESTADO.rows; if (!c || !R.length) return;
+  const st = estatisticas(R);
+  // gráficos redesenhados em fundo claro (independe do tema escuro da tela)
+  const corAnt = Chart.defaults.color; Chart.defaults.color = '#34495e';
+  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(wrap);
+  const nomes = ['Status', 'Demandas por módulo', 'Pedidas x entregues por mês', 'Tempo de entrega (dias)'];
+  const imgs = graficoCfgs(R).map(cfg => {
+    const cv = document.createElement('canvas'); cv.width = 420; cv.height = 250; wrap.appendChild(cv);
+    cfg.options = Object.assign({}, cfg.options, { responsive:false, animation:false, devicePixelRatio:3 });
+    const ch = new Chart(cv, cfg); const u = ch.toBase64Image('image/png', 1); ch.destroy(); return u;
+  });
+  wrap.remove(); Chart.defaults.color = corAnt;
+
+  const k = (v, l, cor) => `<div class="k" style="border-top-color:${cor || '#34495e'}"><b style="color:${cor || 'inherit'}">${v}</b><span>${l}</span></div>`;
+  const mods = [...new Set(R.map(r => r.m).filter(Boolean))].sort();
+  const linhaMod = m => { const X = R.filter(r => r.m === m), a = X.filter(r => r.s === 'Solucionado').length;
+    return `<tr><td><b>${esc(m)}</b></td><td class="num">${X.length}</td><td class="num">${a}</td><td class="num">${X.filter(r => r.s === 'Pendente').length}</td><td class="num">${X.filter(r => r.s === 'Em análise').length}</td><td class="num">${f1(a/X.length*100)}%</td></tr>`; };
+
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Dashboard ${esc(c.titulo)}</title>
+  <style>${PRINT_CSS}@page{size:A4 portrait}h2{margin:12px 0 6px}.kpis{margin-top:10px}figure{padding:6px}td{padding:4px 8px}</style></head><body>
+  ${cabecalhoPDF('Demandas do Saúde Inteligente de ' + c.titulo, 'Painel de acompanhamento · ' + ESTADO.upd)}
+  <section class="kpis">${k(st.tot,'Total de demandas')}${k(st.sol,'Solucionadas','#27ae60')}${k(st.pen,'Pendentes','#f39c12')}${k(st.ana,'Em análise','#3498db')}
+  ${k(f1(st.pct)+'%','Resolvidas','#0f766e')}${k(st.pen+st.ana,'Em aberto')}${k(f1(st.avg),'Tempo médio (dias)')}${k(f1(st.med),'Tempo mediano (dias)')}</section>
+  <h2>Visão geral</h2>
+  <section class="charts">${imgs.map((u, i) => `<figure><figcaption>${nomes[i]}</figcaption><img src="${u}" alt="${nomes[i]}"></figure>`).join('')}</section>
+  <h2>Resumo por módulo</h2>
+  <table><thead><tr><th>Módulo</th><th class="num">Total</th><th class="num">Solucionadas</th><th class="num">Pendentes</th><th class="num">Em análise</th><th class="num">% resolvidas</th></tr></thead><tbody>${mods.map(linhaMod).join('')}</tbody></table>
+  </body></html>`;
+  imprimirHTML(html, `Dashboard - ${c.titulo} - ${hoje()}`);
+}
+
+function pdfDemandas(){
+  const c = cid(ESTADO.slug), T = ESTADO.T; if (!c) return;
+  if (!T.length) return toast('Nenhuma demanda para imprimir com o filtro atual.', true);
+  const st = estatisticas(T);
+  const chip = (l, v, cor) => `<span class="chip"><span class="pill" style="background:${cor}">${v}</span> ${l}</span>`;
+  const linhas = T.map(r => { const d = dd(r);
+    return `<tr><td class="num"><b>${r.n}</b></td><td><b>${esc(r.t)}</b><div class="desc">${esc(r.d)}</div></td><td>${esc(r.m)}</td>
+    <td><span class="pill" style="background:${COL[r.s] || '#7f8c8d'}">${esc(r.s)}</span></td><td class="num">${fm(r.p)}</td><td class="num">${fm(r.e)}</td><td class="num">${d === null ? '' : d}</td></tr>`; }).join('');
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Demandas ${esc(c.titulo)}</title>
+  <style>${PRINT_CSS}@page{size:A4 landscape}table{table-layout:fixed}td,th{overflow-wrap:anywhere}</style></head><body>
+  ${cabecalhoPDF('Demandas do Saúde Inteligente de ' + c.titulo, 'Relação de demandas · ' + ESTADO.upd)}
+  <div class="chips">${chip('demandas', T.length, '#34495e')}${chip('solucionadas', st.sol, '#27ae60')}${chip('pendentes', st.pen, '#f39c12')}${chip('em análise', st.ana, '#3498db')}</div>
+  ${ESTADO.filtro ? `<div class="flt">Filtro aplicado: ${esc(ESTADO.filtro)} (${T.length} de ${ESTADO.rows.length} demandas)</div>` : '<div class="flt">Todas as demandas</div>'}
+  <table><colgroup><col style="width:5%"><col style="width:47%"><col style="width:15%"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:7%"></colgroup>
+  <thead><tr><th class="num">Nº</th><th>Demanda</th><th>Módulo</th><th>Status</th><th class="num">Pedido</th><th class="num">Entrega</th><th class="num">Dias</th></tr></thead><tbody>${linhas}</tbody></table>
+  </body></html>`;
+  imprimirHTML(html, `Demandas - ${c.titulo} - ${hoje()}`);
 }
 
 /* ============================================================
