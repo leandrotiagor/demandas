@@ -173,7 +173,7 @@ async function carregarCidades(){
 function showLogin(msg){
   me = null;
   setView(`<div class="center"><form class="box" id="lf">
-    <h2 class="serif">Portal Saúde Inteligente</h2><p>Entre com seu usuário e senha.</p>
+    <h2 class="serif">Portal de Demandas</h2><p>Entre com seu usuário e senha.</p>
     <label>Usuário<input id="u" autocomplete="username" autocapitalize="none" required></label>
     <label>Senha<input id="p" type="password" autocomplete="current-password" required></label>
     <button class="btn" type="submit">Entrar</button><p class="err" id="err" role="alert">${esc(msg||'')}</p></form></div>`);
@@ -252,7 +252,7 @@ function shell(inner){
    ============================================================ */
 async function showHome(){
   const vis = CIDADES.filter(c => can('ver_'+c.slug));
-  shell(`<div class="hero"><h1 class="serif">Escolha o município</h1><p>Clique no bloco para abrir o acompanhamento de demandas. Use "Enviar planilha" para atualizar os dados automaticamente.</p>
+  shell(`<div class="hero"><h1 class="serif">Escolha o município para ver as demandas</h1>
     ${can('gerenciar_cidades') ? '<p style="margin-top:14px"><button class="btn" id="bnova">+ Nova cidade</button></p>' : ''}</div>
     ${vis.length ? `<div class="cards">${vis.map(c => `<section class="card">
       <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
