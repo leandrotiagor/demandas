@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Portal de Demandas</title>
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.sheetjs.com; connect-src 'self' https://ehpdlwpqktvtkmebrqfj.supabase.co; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
+<script>try{if(window.top!==window.self){document.documentElement.style.display='none'}}catch(e){document.documentElement.style.display='none'}</script>
 <style>
 :root{--bg:#f4f6f7;--cd:#fff;--tx:#2c3e50;--mu:#7f8c8d;--ln:#d5dbdb;--dk:#34495e;--tl:#0f766e;--rd:#c0392b}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17202a;--cd:#212f3d;--tx:#ecf0f1;--mu:#aab7b8;--ln:#3b4d5e;--dk:#0e1620}}
@@ -102,7 +105,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 /* ============================================================
@@ -130,7 +133,7 @@ const PERMS = () => [
 
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fm = s => s ? s.split('-').reverse().join('/') : '';
 const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 
@@ -169,7 +172,7 @@ async function carregarMe(){
     carregarMe.motivo = error ? 'Erro ao consultar seu cadastro: ' + error.message : !data ? 'Seu usuário existe, mas não está cadastrado como operador.' : 'Seu acesso está desativado.';
     await sb.auth.signOut(); me = null; return false;
   }
-  me = data; await carregarCidades(); return true;
+  me = data; await carregarCidades(); ociosoUlt = 0; vigiarOciosidade(); return true;
 }
 
 async function carregarCidades(){
@@ -195,7 +198,16 @@ function showLogin(msg){
   });
 }
 
-async function sair(){ await sb.auth.signOut(); me = null; location.hash = ''; showLogin(); }
+async function sair(msg){ await sb.auth.signOut(); me = null; clearTimeout(ociosoT); location.hash = ''; showLogin(typeof msg === 'string' ? msg : ''); }
+
+// encerra a sessão após 30 minutos sem uso (computadores compartilhados)
+const OCIOSO_MIN = 30; let ociosoT, ociosoUlt = 0;
+function vigiarOciosidade(){
+  const agora = Date.now(); if (agora - ociosoUlt < 5000) return; ociosoUlt = agora;
+  clearTimeout(ociosoT);
+  if (me) ociosoT = setTimeout(() => { if (me) sair('Sessão encerrada por inatividade. Entre novamente.'); }, OCIOSO_MIN * 60000);
+}
+['click','keydown','mousemove','touchstart','scroll'].forEach(ev => window.addEventListener(ev, vigiarOciosidade, { passive:true }));
 
 /* ============================================================
    TROCA DE SENHA
@@ -209,7 +221,7 @@ function showTrocar(forcado){
     <button class="btn" type="submit">Salvar senha</button>
     ${forcado ? '<button class="btn sec" type="button" id="sair">Sair</button>' : '<button class="btn sec" type="button" id="canc">Cancelar</button>'}
     <p class="err" id="err" role="alert"></p></form></div>`);
-  $('#sair')?.addEventListener('click', sair);
+  $('#sair')?.addEventListener('click', () => sair());
   $('#canc')?.addEventListener('click', () => { location.hash = '#/'; route(); });
   $('#tf').addEventListener('submit', async e => {
     e.preventDefault();
@@ -220,7 +232,8 @@ function showTrocar(forcado){
     const btn = $('#tf .btn'); btn.disabled = true;
     const { error } = await sb.auth.updateUser({ password: a });
     if (error) { er.textContent = error.message; btn.disabled = false; return; }
-    await sb.rpc('concluir_troca_senha');
+    const fim = await sb.rpc('concluir_troca_senha');
+    if (fim.error) { er.textContent = fim.error.message; btn.disabled = false; return; }
     me.trocar_senha = false;
     toast('Senha alterada com sucesso.');
     location.hash = '#/'; route();
@@ -250,7 +263,7 @@ function shell(inner){
       <button class="btn sec sm" id="bsenha">Trocar senha</button>
       <button class="btn red sm" id="bsair">Sair</button>
     </nav></div></header><main>${inner}</main>`);
-  $('#bsair').addEventListener('click', sair);
+  $('#bsair').addEventListener('click', () => sair());
   $('#bsenha').addEventListener('click', () => showTrocar(false));
 }
 
@@ -262,7 +275,7 @@ async function showHome(){
   shell(`<div class="hero"><h1 class="serif">Escolha o município que deseja consultar:</h1>
     ${can('gerenciar_cidades') ? '<p style="margin-top:14px"><button class="btn" id="bnova">+ Nova cidade</button></p>' : ''}</div>
     ${vis.length ? `<div class="cards">${vis.map(c => `<section class="card">
-      <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
+      <div><h2 class="serif">${esc(c.nome)}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
       <div class="acts"><a class="btn" href="#/cidade/${c.slug}" style="text-decoration:none">Abrir</a>
       <a class="btn sec" href="#/cidade/${c.slug}/relatorios" style="text-decoration:none">Relatórios</a>
       <a class="btn sec" href="#/cidade/${c.slug}/treinamentos" style="text-decoration:none">Treinamentos</a>
@@ -304,7 +317,7 @@ async function carregarDemandas(slug){
 
 async function showCidade(slug){
   const c = cid(slug);
-  shell(`<div class="pagehead"><div><h1 class="serif">Demandas do Saúde Inteligente de ${c.titulo}</h1>
+  shell(`<div class="pagehead"><div><h1 class="serif">Demandas do Saúde Inteligente de ${esc(c.titulo)}</h1>
     <small id="upd">Carregando…</small></div>
     <div class="row">${can('upload_'+slug) ? `<button class="btn" id="bup">Enviar planilha atualizada</button>` : ''}
     <span class="row" id="pdfbtns"></span><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div>${abasCidade(slug,'dem')}<div id="filtrodata"></div><div id="app"></div>`);
@@ -313,7 +326,7 @@ async function showCidade(slug){
   try {
     const [rows, { data: cd }] = await Promise.all([carregarDemandas(slug), sb.from('cidades').select('atualizado_em').eq('slug', slug).single()]);
     $('#upd').textContent = cd?.atualizado_em ? 'Atualizado em ' + new Date(cd.atualizado_em).toLocaleDateString('pt-BR') : 'Nenhuma planilha enviada ainda';
-    if (!rows.length) { $('#app').innerHTML = `<div class="empty">Ainda não há demandas cadastradas para ${c.titulo}.${can('upload_'+slug) ? ' Use o botão "Enviar planilha atualizada" para carregar.' : ''}</div>`; return; }
+    if (!rows.length) { $('#app').innerHTML = `<div class="empty">Ainda não há demandas cadastradas para ${esc(c.titulo)}.${can('upload_'+slug) ? ' Use o botão "Enviar planilha atualizada" para carregar.' : ''}</div>`; return; }
     ESTADO = { slug, rows, T:rows, filtro:'', upd: $('#upd').textContent, periodo:'' };
     $('#pdfbtns').innerHTML = '<button class="btn sec" id="bpd">Gerar PDF do dashboard</button><button class="btn sec" id="bpl">Gerar PDF das demandas</button>';
     $('#bpd').addEventListener('click', pdfDashboard);
@@ -473,15 +486,15 @@ function previewUpload(slug, lista, nomeArq, ignoradas, mapa, nota, atuais){
   const c = cid(slug), dlg = document.createElement('dialog');
   const cont = s => lista.filter(r => r.status === s).length;
   const faltam = [['n','Nº'],['d','Descrição'],['m','Módulo'],['s','Status'],['p','Data do pedido'],['e','Data da entrega']].filter(([k]) => !mapa[k]).map(x => x[1]);
-  dlg.innerHTML = `<h3 class="serif" style="font-size:24px;margin-bottom:6px">Atualizar ${c.titulo}</h3>
+  dlg.innerHTML = `<h3 class="serif" style="font-size:24px;margin-bottom:6px">Atualizar ${esc(c.titulo)}</h3>
     <p style="margin:0 0 10px;color:var(--mu)">Arquivo: <b>${esc(nomeArq)}</b> · ${lista.length} demandas lidas${ignoradas ? ` · ${ignoradas} linhas vazias ignoradas` : ''}</p>
     <p style="margin:0 0 10px">Solucionadas: <b>${cont('Solucionado')}</b> · Pendentes: <b>${cont('Pendente')}</b> · Em análise: <b>${cont('Em análise')}</b></p>
     ${faltam.length ? `<p style="margin:0 0 10px;color:#b9770e">Colunas não encontradas (ficarão vazias): ${faltam.join(', ')}</p>` : ''}
     ${nota ? `<p style="margin:0 0 10px;color:var(--mu)">${esc(nota)}</p>` : ''}
-    <p style="margin:0 0 10px">Hoje o sistema tem <b>${atuais}</b> demandas de ${c.titulo}; esta planilha tem <b>${lista.length}</b>.${lista.length < atuais ? ' <b style="color:var(--rd)">A planilha tem MENOS demandas que o sistema. Confira se é a versão completa antes de confirmar.</b>' : ''}</p>
+    <p style="margin:0 0 10px">Hoje o sistema tem <b>${atuais}</b> demandas de ${esc(c.titulo)}; esta planilha tem <b>${lista.length}</b>.${lista.length < atuais ? ' <b style="color:var(--rd)">A planilha tem MENOS demandas que o sistema. Confira se é a versão completa antes de confirmar.</b>' : ''}</p>
     <div class="t" style="max-height:240px;overflow:auto"><table style="min-width:520px"><thead><tr><th>Nº</th><th>Título</th><th>Módulo</th><th>Status</th><th>Pedido</th><th>Entrega</th></tr></thead><tbody>
     ${lista.slice(0,6).map(r => `<tr><td>${r.numero}</td><td>${esc(r.titulo).slice(0,70)}</td><td>${esc(r.modulo)}</td><td>${esc(r.status)}</td><td>${fm(r.data_pedido||'')}</td><td>${fm(r.data_entrega||'')}</td></tr>`).join('')}</tbody></table></div>
-    <p style="margin:12px 0;color:var(--rd)"><b>Atenção:</b> isto substitui todas as demandas atuais de ${c.titulo} pelas desta planilha.</p>
+    <p style="margin:12px 0;color:var(--rd)"><b>Atenção:</b> isto substitui todas as demandas atuais de ${esc(c.titulo)} pelas desta planilha.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn sec" id="x-c">Cancelar</button><button class="btn" id="x-ok">Confirmar e atualizar</button></div>`;
   document.body.appendChild(dlg); dlg.showModal();
   const fechar = () => { dlg.close(); dlg.remove(); };
@@ -967,7 +980,7 @@ async function abaPerfis(){
     sb.from('operadores').select('perfil_id')
   ]);
   const uso = id => ops.filter(o => o.perfil_id === id).length;
-  const checks = (sel=[]) => `<div class="perms">${PERMS().map(([k,l]) => `<label><input type="checkbox" value="${k}" ${sel.includes(k)?'checked':''}> ${l}</label>`).join('')}</div>`;
+  const checks = (sel=[]) => `<div class="perms">${PERMS().map(([k,l]) => `<label><input type="checkbox" value="${esc(k)}" ${sel.includes(k)?'checked':''}> ${esc(l)}</label>`).join('')}</div>`;
   box.innerHTML = `<div class="panel"><h3>Novo perfil</h3><form id="pn"><label>Nome do perfil<input id="pnn" required placeholder="ex.: Operador Perdizes"></label>${checks()}<button class="btn" type="submit">Criar perfil</button></form></div>
     ${pfs.map(p => `<div class="perfil" data-id="${p.id}"><div class="row"><b style="flex:1;font-size:16px">${esc(p.nome)}</b><small style="color:var(--mu)">${uso(p.id)} operador(es)</small></div>
       ${checks(p.permissoes)}<div class="row"><button class="btn sm" data-a="salvar">Salvar permissões</button><button class="btn red sm" data-a="del">Excluir perfil</button></div></div>`).join('')}`;
