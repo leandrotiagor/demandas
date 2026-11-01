@@ -272,11 +272,15 @@ async function showHome(){
   $('#bnova')?.addEventListener('click', novaCidade);
   if (!vis.length) return;
   const { data: cs } = await sb.from('cidades').select('slug, atualizado_em');
+  const contar = (tab, slug, tipo) => { let q = sb.from(tab).select('id', { count:'exact', head:true }).eq('cidade', slug); if (tipo) q = q.eq('tipo', tipo); return q; };
+  const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   for (const c of vis) {
-    const { count } = await sb.from('demandas').select('id', { count:'exact', head:true }).eq('cidade', c.slug);
+    const [d, r, t] = await Promise.all([contar('demandas', c.slug), contar('relatorios', c.slug, 'relatorio'), contar('relatorios', c.slug, 'treinamento')]);
     const u = cs?.find(x => x.slug === c.slug)?.atualizado_em;
     const el = $('#meta-'+c.slug);
-    if (el) el.textContent = `${count ?? 0} demandas · ` + (u ? 'atualizado em ' + new Date(u).toLocaleDateString('pt-BR') : 'nenhuma planilha enviada');
+    if (el) el.innerHTML = `<div>${plural(d.count ?? 0, 'demanda', 'demandas')} · ` + (u ? 'atualizado em ' + new Date(u).toLocaleDateString('pt-BR') : 'nenhuma planilha enviada') + '</div>'
+      + `<div>${plural(r.count ?? 0, 'relatório de visita', 'relatórios de visita')}</div>`
+      + `<div>${plural(t.count ?? 0, 'lista de presença', 'listas de presença')}</div>`;
   }
 }
 
