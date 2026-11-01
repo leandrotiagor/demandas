@@ -85,6 +85,10 @@ th{background:var(--dk);color:#fff}
 .perfil{border:1px solid var(--ln);border-radius:10px;padding:14px;margin-bottom:12px}
 .perfil .row{align-items:center}
 
+input.chk{width:18px;height:18px;padding:0;accent-color:var(--tl);cursor:pointer}
+.selbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 10px}
+.selbar span{color:var(--mu)}
+
 /* modal e aviso */
 dialog{border:1px solid var(--ln);border-radius:14px;background:var(--cd);color:var(--tx);padding:22px;width:min(720px,94vw);max-height:90vh}
 dialog::backdrop{background:rgba(0,0,0,.5)}
@@ -99,6 +103,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 /* ============================================================
    CONFIGURAÇÃO - cole aqui os dados do SEU projeto Supabase
@@ -117,7 +122,7 @@ const cid = s => CIDADES.find(c => c.slug === s);
 const slugDe = nome => norm(nome);   // "Taiobeiras" -> "taiobeiras"
 const PERMS = () => [
   ...CIDADES.flatMap(c => [['ver_'+c.slug,'Ver '+c.titulo],['upload_'+c.slug,'Enviar planilha de '+c.titulo]]),
-  ['gerenciar_relatorios','Enviar e excluir relatórios de visita'],
+  ['gerenciar_relatorios','Enviar e excluir relatórios e listas de treinamento'],
   ['gerenciar_cidades','Cadastrar e gerenciar cidades'],
   ['gerenciar_operadores','Gerenciar operadores'],
   ['gerenciar_perfis','Gerenciar perfis']
@@ -229,7 +234,7 @@ function route(){
   if (!me) return showLogin();
   if (me.trocar_senha) return showTrocar(true);
   const h = location.hash.replace(/^#\/?/, '').split('/');
-  if (h[0] === 'cidade' && cid(h[1]) && can('ver_'+h[1])) return h[2] === 'relatorios' ? showRelatorios(h[1]) : showCidade(h[1]);
+  if (h[0] === 'cidade' && cid(h[1]) && can('ver_'+h[1])) return h[2] === 'relatorios' ? showAnexos(h[1], 'relatorio') : h[2] === 'treinamentos' ? showAnexos(h[1], 'treinamento') : showCidade(h[1]);
   if (h[0] === 'admin' && ehAdmin()) return showAdmin();
   showHome();
 }
@@ -260,6 +265,7 @@ async function showHome(){
       <div><h2 class="serif">${c.nome}</h2><div class="meta" id="meta-${c.slug}">Carregando…</div></div>
       <div class="acts"><a class="btn" href="#/cidade/${c.slug}" style="text-decoration:none">Abrir</a>
       <a class="btn sec" href="#/cidade/${c.slug}/relatorios" style="text-decoration:none">Relatórios</a>
+      <a class="btn sec" href="#/cidade/${c.slug}/treinamentos" style="text-decoration:none">Treinamentos</a>
       ${can('upload_'+c.slug) ? `<button class="btn sec" data-up="${c.slug}">Enviar planilha</button>` : ''}</div></section>`).join('')}</div>`
     : '<div class="empty">Você ainda não tem acesso a nenhum município. Fale com o administrador.</div>'}`);
   $$('[data-up]').forEach(b => b.addEventListener('click', () => escolherArquivo(b.dataset.up)));
@@ -466,50 +472,67 @@ function previewUpload(slug, lista, nomeArq, ignoradas, mapa, nota, atuais){
 }
 
 /* ============================================================
-   RELATÓRIOS DE VISITA (PDF por cidade)
+   RELATÓRIOS DE VISITA e LISTAS DE TREINAMENTO (PDF por cidade)
    ============================================================ */
+const TIPOS = {
+  relatorio: { rota:'relatorios', nome:'Relatórios de visita', evento:'visita', ph:'ex.: Visita de acompanhamento',
+    novo:'Enviar novo relatório', enviar:'Enviar relatório', lista:'Relatórios enviados', zip:'Relatórios de visita',
+    sub:'Relatórios em PDF de cada visita. Quem tem acesso à cidade pode visualizar e baixar.',
+    dica:'Gere o PDF a partir do seu Word (Arquivo → Salvar como → PDF) e envie aqui.',
+    vazio:'Nenhum relatório enviado ainda para esta cidade.', pasta:'', um:'relatório' },
+  treinamento: { rota:'treinamentos', nome:'Listas de treinamento', evento:'treinamento', ph:'ex.: Treinamento do módulo Hospital',
+    novo:'Enviar nova lista de treinamento', enviar:'Enviar lista', lista:'Listas enviadas', zip:'Listas de treinamento',
+    sub:'Listas de presença dos treinamentos. Quem tem acesso à cidade pode visualizar e baixar.',
+    dica:'Digitalize a lista de presença assinada, salve em PDF e envie aqui.',
+    vazio:'Nenhuma lista de treinamento enviada ainda para esta cidade.', pasta:'treinamentos/', um:'lista' }
+};
 const abasCidade = (slug, ativa) => `<div class="tabs">
   <button data-go="#/cidade/${slug}" class="${ativa==='dem'?'on':''}">Demandas</button>
-  <button data-go="#/cidade/${slug}/relatorios" class="${ativa==='rel'?'on':''}">Relatórios de visita</button></div>`;
+  ${Object.entries(TIPOS).map(([k, t]) => `<button data-go="#/cidade/${slug}/${t.rota}" class="${ativa===k?'on':''}">${t.nome}</button>`).join('')}</div>`;
 const ligarAbas = () => $$('[data-go]').forEach(b => b.addEventListener('click', () => { location.hash = b.dataset.go; }));
 const tam = b => b >= 1048576 ? (b/1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b/1024)) + ' KB';
 const novoId = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 const BUCKET = 'relatorios';
 const periodo = r => (!r.data_fim || r.data_fim === r.data_visita) ? fm(r.data_visita) : fm(r.data_visita) + ' a ' + fm(r.data_fim);
+const nomeSeguro = t => String(t).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 90) || 'arquivo';
 
-async function showRelatorios(slug){
-  const c = cid(slug);
-  shell(`<div class="pagehead"><div><h1 class="serif">Relatórios de visita — ${esc(c.titulo)}</h1>
-    <small>Relatórios em PDF de cada visita. Quem tem acesso à cidade pode visualizar e baixar.</small></div>
-    <div class="row"><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div>${abasCidade(slug,'rel')}<div id="rel">Carregando…</div>`);
+async function showAnexos(slug, tipo){
+  const c = cid(slug), T = TIPOS[tipo];
+  shell(`<div class="pagehead"><div><h1 class="serif">${T.nome} — ${esc(c.titulo)}</h1><small>${T.sub}</small></div>
+    <div class="row"><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div>${abasCidade(slug, tipo)}<div id="rel">Carregando…</div>`);
   ligarAbas();
-  await listarRelatorios(slug);
+  await listarAnexos(slug, tipo);
 }
 
-async function listarRelatorios(slug){
+async function listarAnexos(slug, tipo){
   const box = $('#rel'); if (!box) return;
-  const { data, error } = await sb.from('relatorios').select('*').eq('cidade', slug)
+  const T = TIPOS[tipo], c = cid(slug);
+  const { data, error } = await sb.from('relatorios').select('*').eq('cidade', slug).eq('tipo', tipo)
     .order('data_visita', { ascending:false }).order('criado_em', { ascending:false });
   if (error) { box.innerHTML = `<div class="empty">Erro ao carregar: ${esc(error.message)}</div>`; return; }
   const pode = can('gerenciar_relatorios');
-  box.innerHTML = `${pode ? `<div class="panel"><h3>Enviar novo relatório</h3>
-    <form id="rf"><div class="row"><label>Título<input id="rf-t" required maxlength="120" placeholder="ex.: Visita de acompanhamento"></label>
-    <label style="max-width:170px;min-width:140px;flex:none">Data inicial da visita<input id="rf-d" type="date" required value="${hoje()}"></label>
-    <label style="max-width:170px;min-width:140px;flex:none">Data final da visita<input id="rf-f" type="date" required value="${hoje()}"></label></div>
+  box.innerHTML = `${pode ? `<div class="panel"><h3>${T.novo}</h3>
+    <form id="rf"><div class="row"><label>Título<input id="rf-t" required maxlength="120" placeholder="${T.ph}"></label>
+    <label style="max-width:170px;min-width:140px;flex:none">Data inicial do ${T.evento}<input id="rf-d" type="date" required value="${hoje()}"></label>
+    <label style="max-width:170px;min-width:140px;flex:none">Data final do ${T.evento}<input id="rf-f" type="date" required value="${hoje()}"></label></div>
     <div class="row" style="margin-top:10px"><label>Observação (opcional)<input id="rf-o" maxlength="300"></label></div>
     <div class="row" style="margin-top:10px"><label>Arquivo PDF (até 25 MB)<input id="rf-a" type="file" accept="application/pdf,.pdf" required></label>
-    <button class="btn" type="submit" id="rf-b">Enviar relatório</button></div>
-    <p style="margin:10px 0 0;color:var(--mu)">Gere o PDF a partir do seu Word (Arquivo → Salvar como → PDF) e envie aqui.</p></form></div>` : ''}
-    <div class="panel"><h3>Relatórios enviados (${data.length})</h3>
-    ${data.length ? `<div class="t"><table><thead><tr><th>Período da visita</th><th>Relatório</th><th>Enviado por</th><th>Ações</th></tr></thead><tbody>
-    ${data.map(r => `<tr data-id="${r.id}"><td style="white-space:nowrap"><b>${periodo(r)}</b></td>
+    <button class="btn" type="submit" id="rf-b">${T.enviar}</button></div>
+    <p style="margin:10px 0 0;color:var(--mu)">${T.dica}</p></form></div>` : ''}
+    <div class="panel"><h3>${T.lista} (${data.length})</h3>
+    ${data.length ? `<div class="selbar"><button class="btn sm" id="bzip" disabled>Baixar selecionados (ZIP)</button><button class="btn sec sm" id="btodos">Selecionar todos</button><span id="selcnt">Nenhum selecionado</span></div>
+    <div class="t"><table><thead><tr><th style="width:36px"><input type="checkbox" class="chk" id="sel-todos" aria-label="Selecionar todos"></th><th>Período do ${T.evento}</th><th>${tipo==='relatorio'?'Relatório':'Lista'}</th><th>Enviado por</th><th>Ações</th></tr></thead><tbody>
+    ${data.map(r => `<tr data-id="${r.id}"><td><input type="checkbox" class="chk sel" aria-label="Selecionar ${esc(r.titulo)}"></td><td style="white-space:nowrap"><b>${periodo(r)}</b></td>
       <td><b>${esc(r.titulo)}</b>${r.observacao ? `<div class="d" style="display:block">${esc(r.observacao)}</div>` : ''}<div class="d" style="display:block">${esc(r.nome_arquivo)} · ${tam(r.tamanho)}</div></td>
       <td>${esc(r.enviado_por)}<div class="d" style="display:block">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</div></td>
       <td><div class="row"><button class="btn sm" data-a="ver">Visualizar</button><button class="btn sec sm" data-a="baixar">Baixar PDF</button>${pode ? '<button class="btn red sm" data-a="del">Excluir</button>' : ''}</div></td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="empty">Nenhum relatório enviado ainda para esta cidade.</div>'}</div>`;
+    </tbody></table></div>` : `<div class="empty">${T.vazio}</div>`}</div>`;
 
+  // datas
   const ini = $('#rf-d'), fim = $('#rf-f');
   if (ini && fim) { ini.addEventListener('change', () => { fim.min = ini.value; if (!fim.value || fim.value < ini.value) fim.value = ini.value; }); fim.min = ini.value; }
+
+  // envio
   $('#rf')?.addEventListener('submit', async e => {
     e.preventDefault();
     const f = $('#rf-a').files[0], b = $('#rf-b');
@@ -519,30 +542,52 @@ async function listarRelatorios(slug){
       if (f.size > 26214400) throw new Error('O arquivo tem mais de 25 MB.');
       if ($('#rf-f').value < $('#rf-d').value) throw new Error('A data final não pode ser anterior à data inicial.');
       b.disabled = true; b.textContent = 'Enviando…';
-      const path = `${slug}/${novoId()}.pdf`;
+      const path = `${slug}/${T.pasta}${novoId()}.pdf`;
       const up = await sb.storage.from(BUCKET).upload(path, f, { contentType:'application/pdf', upsert:false });
       if (up.error) throw up.error;
       const ins = await sb.from('relatorios').insert({
-        cidade: slug, titulo: $('#rf-t').value.trim(), data_visita: $('#rf-d').value, data_fim: $('#rf-f').value, observacao: $('#rf-o').value.trim(),
-        arquivo_path: path, nome_arquivo: f.name, tamanho: f.size, enviado_por: me.usuario });
+        cidade: slug, tipo, titulo: $('#rf-t').value.trim(), data_visita: $('#rf-d').value, data_fim: $('#rf-f').value,
+        observacao: $('#rf-o').value.trim(), arquivo_path: path, nome_arquivo: f.name, tamanho: f.size, enviado_por: me.usuario });
       if (ins.error) { await sb.storage.from(BUCKET).remove([path]); throw ins.error; }
-      toast('Relatório enviado.'); listarRelatorios(slug);
-    } catch (er) { toast('Não foi possível enviar: ' + er.message, true); b.disabled = false; b.textContent = 'Enviar relatório'; }
+      toast('Arquivo enviado.'); listarAnexos(slug, tipo);
+    } catch (er) { toast('Não foi possível enviar: ' + er.message, true); b.disabled = false; b.textContent = T.enviar; }
   });
 
+  // seleção múltipla
+  const marcados = () => $$('input.sel:checked', box).map(i => data.find(x => x.id === i.closest('tr').dataset.id)).filter(Boolean);
+  const atualizarSel = () => {
+    const n = marcados().length, tot = data.length;
+    if (!$('#bzip')) return;
+    $('#bzip').disabled = n === 0;
+    $('#bzip').textContent = n > 1 ? `Baixar ${n} selecionados (ZIP)` : n === 1 ? 'Baixar selecionado' : 'Baixar selecionados (ZIP)';
+    $('#selcnt').textContent = n ? `${n} de ${tot} selecionado(s)` : 'Nenhum selecionado';
+    $('#sel-todos').checked = n === tot; $('#sel-todos').indeterminate = n > 0 && n < tot;
+    $('#btodos').textContent = n === tot ? 'Limpar seleção' : 'Selecionar todos';
+  };
+  box.onchange = e => {
+    if (e.target.id === 'sel-todos') $$('input.sel', box).forEach(i => { i.checked = e.target.checked; });
+    if (e.target.matches('input.sel, #sel-todos')) atualizarSel();
+  };
+
   box.onclick = async e => {
+    if (e.target.id === 'btodos') { const todos = marcados().length === data.length; $$('input.sel', box).forEach(i => { i.checked = !todos; }); return atualizarSel(); }
+    if (e.target.id === 'bzip') {
+      const b = e.target; b.disabled = true;
+      try { await baixarVarios(marcados(), tipo, slug); } catch (er) { toast(er.message, true); }
+      b.disabled = false; return;
+    }
     const b = e.target.closest('button[data-a]'); if (!b) return;
     const r = data.find(x => x.id === b.closest('tr').dataset.id); if (!r) return;
     try {
       if (b.dataset.a === 'ver') return await visualizarRelatorio(r);
       if (b.dataset.a === 'baixar') return await baixarRelatorio(r);
       if (b.dataset.a === 'del') {
-        if (!confirm(`Excluir o relatório "${r.titulo}" (${periodo(r)})? Não é possível desfazer.`)) return;
+        if (!confirm(`Excluir "${r.titulo}" (${periodo(r)})? Não é possível desfazer.`)) return;
         const rm = await sb.storage.from(BUCKET).remove([r.arquivo_path]);
         if (rm.error) throw rm.error;
         const { error } = await sb.from('relatorios').delete().eq('id', r.id);
         if (error) throw error;
-        toast('Relatório excluído.'); listarRelatorios(slug);
+        toast('Arquivo excluído.'); listarAnexos(slug, tipo);
       }
     } catch (er) { toast(er.message, true); }
   };
@@ -554,15 +599,39 @@ async function blobRelatorio(r){
   return new Blob([data], { type:'application/pdf' });
 }
 
-async function baixarRelatorio(r){
-  const url = URL.createObjectURL(await blobRelatorio(r));
-  const a = document.createElement('a'); a.href = url; a.download = r.nome_arquivo || 'relatorio.pdf';
+function salvarBlob(blob, nome){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = nome;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+async function baixarRelatorio(r){ salvarBlob(await blobRelatorio(r), r.nome_arquivo || 'arquivo.pdf'); }
+
+// Vários arquivos de uma vez: gera um único ZIP
+async function baixarVarios(lista, tipo, slug){
+  if (!lista.length) return;
+  if (lista.length === 1) return baixarRelatorio(lista[0]);
+  if (!window.JSZip) throw new Error('A biblioteca de compactação não carregou. Recarregue a página e tente de novo.');
+  toast(`Preparando ${lista.length} arquivos…`);
+  const zip = new JSZip(), usados = new Set(), fila = [...lista];
+  const trabalhador = async () => {
+    while (fila.length) {
+      const r = fila.shift(), blob = await blobRelatorio(r);
+      const base = nomeSeguro(`${r.data_visita}${r.data_fim && r.data_fim !== r.data_visita ? ' a ' + r.data_fim : ''} - ${r.titulo}`);
+      let nome = base + '.pdf', i = 2;
+      while (usados.has(nome)) nome = `${base} (${i++}).pdf`;
+      usados.add(nome); zip.file(nome, blob);
+    }
+  };
+  await Promise.all([trabalhador(), trabalhador(), trabalhador()]);
+  const out = await zip.generateAsync({ type:'blob' });
+  salvarBlob(out, nomeSeguro(`${TIPOS[tipo].zip} - ${cid(slug).titulo} - ${hoje()}`) + '.zip');
+  toast('Download do ZIP iniciado.');
+}
+
 async function visualizarRelatorio(r){
-  toast('Abrindo relatório…');
+  toast('Abrindo arquivo…');
   const url = URL.createObjectURL(await blobRelatorio(r));
   const d = abrirDialog(`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h3 class="serif" style="font-size:20px">${esc(r.titulo)} · ${periodo(r)}</h3>
     <div class="row"><button class="btn sm" id="v-b">Baixar PDF</button><button class="btn sec sm" id="v-n">Abrir em nova aba</button><button class="btn sec sm" id="v-f">Fechar</button></div></div>
@@ -573,7 +642,6 @@ async function visualizarRelatorio(r){
   $('#v-b', d).onclick = () => baixarRelatorio(r).catch(er => toast(er.message, true));
   d.addEventListener('close', () => setTimeout(() => URL.revokeObjectURL(url), 1000));
 }
-
 
 /* ============================================================
    PDF (dashboard e demandas) - abre a janela de impressão do
