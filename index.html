@@ -303,18 +303,37 @@ async function showCidade(slug){
   shell(`<div class="pagehead"><div><h1 class="serif">Demandas do Saúde Inteligente de ${c.titulo}</h1>
     <small id="upd">Carregando…</small></div>
     <div class="row">${can('upload_'+slug) ? `<button class="btn" id="bup">Enviar planilha atualizada</button>` : ''}
-    <span class="row" id="pdfbtns"></span><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div>${abasCidade(slug,'dem')}<div id="app"></div>`);
+    <span class="row" id="pdfbtns"></span><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div>${abasCidade(slug,'dem')}<div id="filtrodata"></div><div id="app"></div>`);
   ligarAbas();
   $('#bup')?.addEventListener('click', () => escolherArquivo(slug));
   try {
     const [rows, { data: cd }] = await Promise.all([carregarDemandas(slug), sb.from('cidades').select('atualizado_em').eq('slug', slug).single()]);
     $('#upd').textContent = cd?.atualizado_em ? 'Atualizado em ' + new Date(cd.atualizado_em).toLocaleDateString('pt-BR') : 'Nenhuma planilha enviada ainda';
     if (!rows.length) { $('#app').innerHTML = `<div class="empty">Ainda não há demandas cadastradas para ${c.titulo}.${can('upload_'+slug) ? ' Use o botão "Enviar planilha atualizada" para carregar.' : ''}</div>`; return; }
-    ESTADO = { slug, rows, T:rows, filtro:'', upd: $('#upd').textContent };
+    ESTADO = { slug, rows, T:rows, filtro:'', upd: $('#upd').textContent, periodo:'' };
     $('#pdfbtns').innerHTML = '<button class="btn sec" id="bpd">Gerar PDF do dashboard</button><button class="btn sec" id="bpl">Gerar PDF das demandas</button>';
     $('#bpd').addEventListener('click', pdfDashboard);
     $('#bpl').addEventListener('click', pdfDemandas);
-    renderDash(rows);
+    $('#filtrodata').innerHTML = `<div class="panel"><div class="row">
+      <label style="max-width:210px;min-width:160px;flex:none">Filtrar por<select id="fd-c"><option value="p">Data do pedido</option><option value="e">Data da entrega</option></select></label>
+      <label style="max-width:170px;min-width:140px;flex:none">De<input type="date" id="fd-i"></label>
+      <label style="max-width:170px;min-width:140px;flex:none">Até<input type="date" id="fd-f"></label>
+      <button class="btn sec" id="fd-l" type="button">Limpar período</button><span id="fd-r" style="color:var(--mu)"></span></div>
+      <p style="margin:8px 0 0;color:var(--mu);font-size:12.5px">O período vale para os indicadores, os gráficos, a tabela e os PDFs gerados.</p></div>`;
+    const aplicar = () => {
+      const campo = $('#fd-c').value, i = $('#fd-i').value, f = $('#fd-f').value;
+      if (i && f && f < i) { toast('A data final não pode ser anterior à inicial.', true); return; }
+      const base = (!i && !f) ? rows : rows.filter(r => r[campo] && (!i || r[campo] >= i) && (!f || r[campo] <= f));
+      ESTADO.rows = base; ESTADO.T = base;
+      ESTADO.periodo = (!i && !f) ? '' : 'Período: ' + (i ? fm(i) : 'início') + ' a ' + (f ? fm(f) : 'hoje') + ' (' + (campo === 'p' ? 'data do pedido' : 'data da entrega') + ')';
+      $('#fd-r').textContent = (!i && !f) ? '' : `${base.length} de ${rows.length} demandas no período`;
+      destroyCharts();
+      if (!base.length) { $('#app').innerHTML = '<div class="empty">Nenhuma demanda no período selecionado.</div>'; return; }
+      renderDash(base);
+    };
+    ['#fd-c', '#fd-i', '#fd-f'].forEach(x => $(x).addEventListener('change', aplicar));
+    $('#fd-l').addEventListener('click', () => { $('#fd-i').value = ''; $('#fd-f').value = ''; aplicar(); });
+    aplicar();
   } catch (e) { $('#app').innerHTML = `<div class="empty">Erro ao carregar: ${esc(e.message)}</div>`; }
 }
 
@@ -511,6 +530,7 @@ async function listarAnexos(slug, tipo){
     .order('data_visita', { ascending:false }).order('criado_em', { ascending:false });
   if (error) { box.innerHTML = `<div class="empty">Erro ao carregar: ${esc(error.message)}</div>`; return; }
   const pode = can('gerenciar_relatorios');
+  let vis = data;   // itens visíveis após o filtro de período
   box.innerHTML = `${pode ? `<div class="panel"><h3>${T.novo}</h3>
     <form id="rf"><div class="row"><label>Título<input id="rf-t" required maxlength="120" placeholder="${T.ph}"></label>
     <label style="max-width:170px;min-width:140px;flex:none">Data inicial do ${T.evento}<input id="rf-d" type="date" required value="${hoje()}"></label>
@@ -519,16 +539,14 @@ async function listarAnexos(slug, tipo){
     <div class="row" style="margin-top:10px"><label>Arquivo PDF (até 25 MB)<input id="rf-a" type="file" accept="application/pdf,.pdf" required></label>
     <button class="btn" type="submit" id="rf-b">${T.enviar}</button></div>
     <p style="margin:10px 0 0;color:var(--mu)">${T.dica}</p></form></div>` : ''}
-    <div class="panel"><h3>${T.lista} (${data.length})</h3>
-    ${data.length ? `<div class="selbar"><button class="btn sm" id="bzip" disabled>Baixar selecionados (ZIP)</button><button class="btn sec sm" id="btodos">Selecionar todos</button><span id="selcnt">Nenhum selecionado</span></div>
-    <div class="t"><table><thead><tr><th style="width:36px"><input type="checkbox" class="chk" id="sel-todos" aria-label="Selecionar todos"></th><th>Período do ${T.evento}</th><th>${tipo==='relatorio'?'Relatório':'Lista'}</th><th>Enviado por</th><th>Ações</th></tr></thead><tbody>
-    ${data.map(r => `<tr data-id="${r.id}"><td><input type="checkbox" class="chk sel" aria-label="Selecionar ${esc(r.titulo)}"></td><td style="white-space:nowrap"><b>${periodo(r)}</b></td>
-      <td><b>${esc(r.titulo)}</b>${r.observacao ? `<div class="d" style="display:block">${esc(r.observacao)}</div>` : ''}<div class="d" style="display:block">${esc(r.nome_arquivo)} · ${tam(r.tamanho)}</div></td>
-      <td>${esc(r.enviado_por)}<div class="d" style="display:block">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</div></td>
-      <td><div class="row"><button class="btn sm" data-a="ver">Visualizar</button><button class="btn sec sm" data-a="baixar">Baixar PDF</button>${pode ? '<button class="btn red sm" data-a="del">Excluir</button>' : ''}</div></td></tr>`).join('')}
-    </tbody></table></div>` : `<div class="empty">${T.vazio}</div>`}</div>`;
+    <div class="panel"><h3>${T.lista} <span id="qtd" style="font-weight:400;color:var(--mu)"></span></h3>
+    ${data.length ? `<div class="row" style="margin-bottom:12px">
+      <label style="max-width:170px;min-width:140px;flex:none">Período — de<input type="date" id="fd-i"></label>
+      <label style="max-width:170px;min-width:140px;flex:none">até<input type="date" id="fd-f"></label>
+      <button class="btn sec" id="fd-l" type="button">Limpar período</button></div>
+      <div id="tab"></div>` : `<div class="empty">${T.vazio}</div>`}</div>`;
 
-  // datas
+  // datas do formulário de envio
   const ini = $('#rf-d'), fim = $('#rf-f');
   if (ini && fim) { ini.addEventListener('change', () => { fim.min = ini.value; if (!fim.value || fim.value < ini.value) fim.value = ini.value; }); fim.min = ini.value; }
 
@@ -553,24 +571,46 @@ async function listarAnexos(slug, tipo){
     } catch (er) { toast('Não foi possível enviar: ' + er.message, true); b.disabled = false; b.textContent = T.enviar; }
   });
 
-  // seleção múltipla
+  // tabela (respeita o filtro de período)
   const marcados = () => $$('input.sel:checked', box).map(i => data.find(x => x.id === i.closest('tr').dataset.id)).filter(Boolean);
   const atualizarSel = () => {
-    const n = marcados().length, tot = data.length;
     if (!$('#bzip')) return;
+    const n = marcados().length, tot = vis.length;
     $('#bzip').disabled = n === 0;
     $('#bzip').textContent = n > 1 ? `Baixar ${n} selecionados (ZIP)` : n === 1 ? 'Baixar selecionado' : 'Baixar selecionados (ZIP)';
     $('#selcnt').textContent = n ? `${n} de ${tot} selecionado(s)` : 'Nenhum selecionado';
-    $('#sel-todos').checked = n === tot; $('#sel-todos').indeterminate = n > 0 && n < tot;
-    $('#btodos').textContent = n === tot ? 'Limpar seleção' : 'Selecionar todos';
+    $('#sel-todos').checked = n === tot && tot > 0; $('#sel-todos').indeterminate = n > 0 && n < tot;
+    $('#btodos').textContent = n === tot ? 'Limpar seleção' : (vis.length < data.length ? 'Selecionar todos do período' : 'Selecionar todos');
   };
+  const desenhar = () => {
+    if (!data.length) return;
+    const i = $('#fd-i').value, f = $('#fd-f').value;
+    vis = data.filter(r => (!f || r.data_visita <= f) && (!i || (r.data_fim || r.data_visita) >= i));
+    $('#qtd').textContent = (i || f) ? `(${vis.length} de ${data.length} no período)` : `(${data.length})`;
+    $('#tab').innerHTML = !vis.length ? '<div class="empty">Nenhum arquivo no período selecionado.</div>' : `<div class="selbar"><button class="btn sm" id="bzip" disabled>Baixar selecionados (ZIP)</button><button class="btn sec sm" id="btodos">Selecionar todos</button><span id="selcnt">Nenhum selecionado</span></div>
+    <div class="t"><table><thead><tr><th style="width:36px"><input type="checkbox" class="chk" id="sel-todos" aria-label="Selecionar todos"></th><th>Período do ${T.evento}</th><th>${tipo==='relatorio'?'Relatório':'Lista'}</th><th>Enviado por</th><th>Ações</th></tr></thead><tbody>
+    ${vis.map(r => `<tr data-id="${r.id}"><td><input type="checkbox" class="chk sel" aria-label="Selecionar ${esc(r.titulo)}"></td><td style="white-space:nowrap"><b>${periodo(r)}</b></td>
+      <td><b>${esc(r.titulo)}</b>${r.observacao ? `<div class="d" style="display:block">${esc(r.observacao)}</div>` : ''}<div class="d" style="display:block">${esc(r.nome_arquivo)} · ${tam(r.tamanho)}</div></td>
+      <td>${esc(r.enviado_por)}<div class="d" style="display:block">${new Date(r.criado_em).toLocaleDateString('pt-BR')}</div></td>
+      <td><div class="row"><button class="btn sm" data-a="ver">Visualizar</button><button class="btn sec sm" data-a="baixar">Baixar PDF</button>${pode ? '<button class="btn red sm" data-a="del">Excluir</button>' : ''}</div></td></tr>`).join('')}
+    </tbody></table></div>`;
+    atualizarSel();
+  };
+  if (data.length) {
+    ['#fd-i', '#fd-f'].forEach(x => $(x).addEventListener('change', () => {
+      if ($('#fd-i').value && $('#fd-f').value && $('#fd-f').value < $('#fd-i').value) { toast('A data final não pode ser anterior à inicial.', true); return; }
+      desenhar();
+    }));
+    $('#fd-l').addEventListener('click', () => { $('#fd-i').value = ''; $('#fd-f').value = ''; desenhar(); });
+    desenhar();
+  }
+
   box.onchange = e => {
     if (e.target.id === 'sel-todos') $$('input.sel', box).forEach(i => { i.checked = e.target.checked; });
     if (e.target.matches('input.sel, #sel-todos')) atualizarSel();
   };
-
   box.onclick = async e => {
-    if (e.target.id === 'btodos') { const todos = marcados().length === data.length; $$('input.sel', box).forEach(i => { i.checked = !todos; }); return atualizarSel(); }
+    if (e.target.id === 'btodos') { const todos = marcados().length === vis.length; $$('input.sel', box).forEach(i => { i.checked = !todos; }); return atualizarSel(); }
     if (e.target.id === 'bzip') {
       const b = e.target; b.disabled = true;
       try { await baixarVarios(marcados(), tipo, slug); } catch (er) { toast(er.message, true); }
@@ -626,7 +666,8 @@ async function baixarVarios(lista, tipo, slug){
   };
   await Promise.all([trabalhador(), trabalhador(), trabalhador()]);
   const out = await zip.generateAsync({ type:'blob' });
-  salvarBlob(out, nomeSeguro(`${TIPOS[tipo].zip} - ${cid(slug).titulo} - ${hoje()}`) + '.zip');
+  const pi = $('#fd-i')?.value, pf = $('#fd-f')?.value;
+  salvarBlob(out, nomeSeguro(`${TIPOS[tipo].zip} - ${cid(slug).titulo}${(pi || pf) ? ' - ' + (pi || 'inicio') + ' a ' + (pf || hoje()) : ''} - ${hoje()}`) + '.zip');
   toast('Download do ZIP iniciado.');
 }
 
@@ -708,7 +749,8 @@ function estatisticas(R){
 const f1 = x => x.toFixed(1).replace('.', ',');
 
 function pdfDashboard(){
-  const c = cid(ESTADO.slug), R = ESTADO.rows; if (!c || !R.length) return;
+  const c = cid(ESTADO.slug), R = ESTADO.rows; if (!c) return;
+  if (!R.length) return toast('Nenhuma demanda no período selecionado.', true);
   const st = estatisticas(R);
   // gráficos redesenhados em fundo claro (independe do tema escuro da tela)
   const corAnt = Chart.defaults.color; Chart.defaults.color = '#34495e';
@@ -729,7 +771,7 @@ function pdfDashboard(){
 
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Dashboard ${esc(c.titulo)}</title>
   <style>${PRINT_CSS}@page{size:A4 portrait}h2{margin:12px 0 6px}.kpis{margin-top:10px}figure{padding:6px}td{padding:4px 8px}</style></head><body>
-  ${cabecalhoPDF('Demandas do Saúde Inteligente de ' + c.titulo, 'Painel de acompanhamento · ' + ESTADO.upd)}
+  ${cabecalhoPDF('Demandas do Saúde Inteligente de ' + c.titulo, 'Painel de acompanhamento · ' + ESTADO.upd + (ESTADO.periodo ? ' · ' + ESTADO.periodo : ''))}
   <section class="kpis">${k(st.tot,'Total de demandas')}${k(st.sol,'Solucionadas','#27ae60')}${k(st.pen,'Pendentes','#f39c12')}${k(st.ana,'Em análise','#3498db')}
   ${k(f1(st.pct)+'%','Resolvidas','#0f766e')}${k(st.pen+st.ana,'Em aberto')}${k(f1(st.avg),'Tempo médio (dias)')}${k(f1(st.med),'Tempo mediano (dias)')}</section>
   <h2>Visão geral</h2>
@@ -750,7 +792,7 @@ function pdfDemandas(){
     <td><span class="pill" style="background:${COL[r.s] || '#7f8c8d'}">${esc(r.s)}</span></td><td class="num">${fm(r.p)}</td><td class="num">${fm(r.e)}</td><td class="num">${d === null ? '' : d}</td></tr>`; }).join('');
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Demandas ${esc(c.titulo)}</title>
   <style>${PRINT_CSS}@page{size:A4 landscape}table{table-layout:fixed}td,th{overflow-wrap:anywhere}</style></head><body>
-  ${cabecalhoPDF('Demandas do Saúde Inteligente de ' + c.titulo, 'Relação de demandas · ' + ESTADO.upd)}
+  ${cabecalhoPDF('Demandas do Saúde Inteligente de ' + c.titulo, 'Relação de demandas · ' + ESTADO.upd + (ESTADO.periodo ? ' · ' + ESTADO.periodo : ''))}
   <div class="chips">${chip('demandas', T.length, '#34495e')}${chip('solucionadas', st.sol, '#27ae60')}${chip('pendentes', st.pen, '#f39c12')}${chip('em análise', st.ana, '#3498db')}</div>
   ${ESTADO.filtro ? `<div class="flt">Filtro aplicado: ${esc(ESTADO.filtro)} (${T.length} de ${ESTADO.rows.length} demandas)</div>` : '<div class="flt">Todas as demandas</div>'}
   <table><colgroup><col style="width:5%"><col style="width:47%"><col style="width:15%"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:7%"></colgroup>
