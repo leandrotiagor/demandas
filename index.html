@@ -513,12 +513,12 @@ function previewUpload(slug, lista, nomeArq, ignoradas, mapa, nota, atuais){
 const TIPOS = {
   relatorio: { rota:'relatorios', nome:'Relatórios de visita', evento:'visita', ph:'ex.: Visita de acompanhamento',
     novo:'Enviar novo relatório', enviar:'Enviar relatório', lista:'Relatórios enviados', zip:'Relatórios de visita',
-    sub:'Relatórios em PDF de cada visita. Quem tem acesso à cidade pode visualizar e baixar.',
+    sub:'',
     dica:'Gere o PDF a partir do seu Word (Arquivo → Salvar como → PDF) e envie aqui.',
     vazio:'Nenhum relatório enviado ainda para esta cidade.', pasta:'', um:'relatório' },
   treinamento: { rota:'treinamentos', nome:'Listas de treinamento', evento:'treinamento', ph:'ex.: Treinamento do módulo Hospital',
     novo:'Enviar nova lista de treinamento', enviar:'Enviar lista', lista:'Listas enviadas', zip:'Listas de treinamento',
-    sub:'Listas de presença dos treinamentos. Quem tem acesso à cidade pode visualizar e baixar.',
+    sub:'',
     dica:'Digitalize a lista de presença assinada, salve em PDF e envie aqui.',
     vazio:'Nenhuma lista de treinamento enviada ainda para esta cidade.', pasta:'treinamentos/', um:'lista' }
 };
@@ -534,7 +534,7 @@ const nomeSeguro = t => String(t).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g,
 
 async function showAnexos(slug, tipo){
   const c = cid(slug), T = TIPOS[tipo];
-  shell(`<div class="pagehead"><div><h1 class="serif">${T.nome} — ${esc(c.titulo)}</h1><small>${T.sub}</small></div>
+  shell(`<div class="pagehead"><div><h1 class="serif">${T.nome} — ${esc(c.titulo)}</h1>${T.sub ? `<small>${T.sub}</small>` : ''}</div>
     <div class="row"><a class="btn sec" href="#/" style="text-decoration:none">Voltar</a></div></div>${abasCidade(slug, tipo)}<div id="rel">Carregando…</div>`);
   ligarAbas();
   await listarAnexos(slug, tipo);
